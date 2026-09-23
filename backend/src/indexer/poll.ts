@@ -2,7 +2,7 @@ import type { Env } from "../lib/env.js";
 import { isContractConfigured } from "../lib/env.js";
 import { readContract } from "../lib/genlayer-client.js";
 
-interface DisputeDict {
+export interface DisputeDict {
   id: string;
   claim: string;
   claim_category: string;
@@ -28,7 +28,7 @@ interface DisputeDict {
 
 const TERMINAL_STATUSES = new Set(["SETTLED", "CANCELLED", "DEFAULTED_NO_RESPONSE"]);
 
-async function upsertDispute(db: D1Database, d: DisputeDict) {
+export async function upsertDispute(db: D1Database, d: DisputeDict) {
   const now = new Date().toISOString();
   await db.prepare(
     `INSERT INTO disputes (

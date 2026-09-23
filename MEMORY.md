@@ -344,6 +344,45 @@ after the fix, redeployed to `https://crossbench-app.vercel.app`. **Still
 not personally verified with a real wallet transaction** - waiting on the
 user to retry.
 
+## Read-through indexing, not cron-only (2026-09-24)
+
+User: "I created something and it did not show in frontend" + "I want
+everything users do on the app to reflect immediately i.e no delay." Real
+report, real dispute: `ec-2`, claimant `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb`
+(their real MetaMask address from the earlier BigInt-fix testing), created
+successfully on-chain at `2026-09-23T23:20:23` - confirming that fix
+actually worked - but invisible in the app because `/disputes` and
+`/disputes/:id` both only ever read from D1, and D1 only got written by the
+Cron Trigger, which this session already found to be unreliable (never
+observed writing to `indexer_state` despite the schedule being genuinely
+registered - see the earlier cron investigation above).
+
+**Fix - read-through, not cron-only**: `pollOnce()` and `upsertDispute()`
+exported from `indexer/poll.ts` and reused directly in the request path:
+- `GET /disputes/:id` now does a live `get_dispute` contract read first,
+  upserts it into D1 as a side effect, and returns the live result
+  directly. D1 is only a fallback if the live read itself fails (RPC budget
+  exhausted, transient network error) - inverted from before, where D1 was
+  primary and live-read was only a fallback for un-indexed rows.
+- `GET /disputes` calls `pollOnce(c.env)` (the same sync the cron runs)
+  before querying D1, so the list is never more than one request-cycle
+  behind the chain regardless of whether the Cron Trigger fired recently.
+- The Cron Trigger and `/internal/reindex` manual trigger both still exist
+  and still help (they mean a list load doesn't have to pay for indexing
+  every single active dispute from scratch every time), but neither is
+  load-bearing for correctness anymore.
+
+Verified directly: `curl .../disputes` immediately returned `ec-2`
+(previously invisible) right after this deployed, no cron wait, no manual
+reindex call needed.
+
+Cost note: this does mean every `/disputes` list load now costs at least
+one extra `get_stats` RPC call (and a `get_dispute` per new/active dispute
+if any are outstanding) against the ~450/hr Redis-guarded budget. Fine at
+current traffic; worth revisiting (e.g. a short in-memory/KV TTL cache on
+the sync step, a few seconds, not the old cron-only staleness) if dispute
+volume or concurrent readers grow enough to matter.
+
 ## Next step
 
 Rewrite the backend section of ARCHITECTURE.md for Cloudflare Workers + D1,
