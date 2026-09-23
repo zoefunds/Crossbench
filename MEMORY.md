@@ -96,6 +96,49 @@ The custody/emission pattern Crossbench's contract must follow:
 - [x] 2026-09-23 — **Vercel deployment live.** `vercel link` (team `adebiyi2002gmailcoms-projects`), env vars set (`NEXT_PUBLIC_API_URL` → the Worker URL above, `NEXT_PUBLIC_GENLAYER_CHAIN_ID=61999`, `NEXT_PUBLIC_GENLAYER_RPC_URL`, `NEXT_PUBLIC_APP_URL`), `vercel deploy --prod` succeeded. Live at **https://frontend-tau-livid-gi1xp8ftb4.vercel.app** (title renders correctly, HTTP 200).
   - **Not yet set**: `NEXT_PUBLIC_CONTRACT_ADDRESS` (waiting on user's contract deployment - see next step) and `NEXT_PUBLIC_REOWN_PROJECT_ID` (empty - wallet connect button won't actually open until the user creates a Reown Cloud project and this is set; everything else on the site works without it). Backend CORS currently reflects any request origin (`cors({origin: (origin) => origin})`) to unblock this Vercel preview/production URL without hardcoding it - fine for now, worth tightening to an explicit allow-list once the final custom domain (if any) is decided.
 
+## Rename: Evidence Court → Crossbench (2026-09-23)
+
+Renamed everywhere per explicit user instruction ("pick another unique
+name... change it everywhere"). Picked **Crossbench** - in a courtroom or
+parliament, the crossbench is where independent members sit, aligned with
+neither side, matching "neither side gets to weigh it." Checked against
+every existing project name in the user's Vercel account first - no
+collision.
+
+What changed:
+- Directory: `/Users/macbook/Evidence court` → `/Users/macbook/Crossbench`.
+- Contract: `contracts/evidence_court_contract.py` → `contracts/crossbench_contract.py`, class `EvidenceCourt` → `Crossbench`, `get_stats()["product"]` → `"Crossbench"`. Redeployed fresh (the old deployment at `0xdC35E20AE1e63f21555BA929b8a73867e23ca602` still says "Evidence Court" on-chain and is now abandoned) - **current contract address: `0x90639b4Cc538021aFe4d97C03D336B5e1854fA28`**, verified via `genlayer call ... get_stats` returning `"product": "Crossbench"`.
+- Backend: Worker renamed `evidence-court-api` → `crossbench-api` (new Worker - secrets don't carry over renames, re-set `JWT_SECRET`/`CONTRACT_ADDRESS`; old Worker deleted via `wrangler delete --name evidence-court-api`). New URL: **https://crossbench-api.preciousmofeoluwa.workers.dev**. D1 database resource itself is still literally named `evidence_court` on Cloudflare (no `wrangler d1 rename`; renaming would mean recreating and re-migrating a database that already has real state, wasn't worth it for an internal, never-user-facing identifier) - `wrangler.toml`'s `database_name` field deliberately still says `evidence_court` to match the real resource, `database_id` binding is what actually matters for deploy.
+- Frontend: Vercel project renamed `frontend` → `crossbench` via `vercel project rename`. Aliased at `https://crossbench-app.vercel.app` (also still reachable at the original `https://frontend-tau-livid-gi1xp8ftb4.vercel.app`). Title, `Logo.tsx`, all page copy, `package.json` updated.
+- Docs (README/ARCHITECTURE/CONTRACT_DEPLOYMENT/this file) updated throughout.
+- Repo pushed to **https://github.com/zoefunds/Crossbench** (user-provided remote), `git init` done at the renamed root (frontend's own nested `.git` from `create-next-app` was removed first so the whole project is one repo), commits carry no AI attribution per explicit instruction.
+
+**Vercel deployment protection**: `crossbench-app.vercel.app` initially served Vercel's own login page instead of the app (team-level SSO/deployment protection). Patched the Vercel project's `ssoProtection` setting to `null` via a direct API call (found via `~/Library/Application Support/com.vercel.cli/auth.json`) to make it public, matching the user's other project aliases. Told the user this was done and offered to revert if they'd rather keep it protected - they have not asked to revert as of this writing.
+
+## GenLayer RPC rate limiting (2026-09-23)
+
+User: GenLayer StudioNet enforces roughly 500 req/hr for this account/setup
+(differs from the generic 60/min-1000/hr-10000/day figures in the public
+skill docs - trust the user's stated number for this deployment). Backend
+now guards every `readContract` call through `checkRpcBudget()` in
+`backend/src/lib/genlayer-client.ts`:
+- **Primary**: Upstash Redis (`@upstash/redis/cloudflare` - the
+  Workers-compatible REST client; the TCP `rediss://` connection string the
+  user first pasted cannot work in Workers, which has no raw socket access -
+  asked for and got the actual REST URL + token instead). Atomic `INCR` per
+  rolling hour window, `EXPIRE` set once on first increment. Secrets:
+  `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, both set via
+  `wrangler secret put` (not committed anywhere).
+- **Fallback**: a D1-backed counter (`rate_limit_counters` table, already in
+  the schema) if Redis isn't configured - best-effort only, since D1
+  read-then-write isn't atomic across concurrent Workers isolates, but keeps
+  the backend degrading gracefully instead of hard-depending on Redis.
+- Limit set to 450 (`GENLAYER_RPC_MAX_REQUESTS_PER_HOUR` in `wrangler.toml`),
+  under the user's stated 500 ceiling with margin for retries/spikes.
+- Once exhausted, `readContract` throws and callers (indexer poll loop,
+  `/disputes*` routes) already had try/catch or natural error propagation in
+  place - no separate handling needed.
+
 ## Next step
 
 Rewrite the backend section of ARCHITECTURE.md for Cloudflare Workers + D1,
