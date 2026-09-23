@@ -40,7 +40,7 @@ export default function LandingPage() {
 
       <section>
         <h2 className="label-sm mb-6 text-text-dim">The Core Loop</h2>
-        <ol className="grid gap-4 md:grid-cols-2">
+        <ol className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {STAGES.map((stage, i) => (
             <li key={stage.label} className="glass-card p-5">
               <div className="flex items-baseline gap-3">

@@ -32,11 +32,11 @@ export default async function DisputesPage() {
         <div className="glass-card p-10 text-center text-text-dim">No disputes yet. Be the first to open one.</div>
       )}
 
-      <div className="grid gap-4">
+      <div className="grid grid-cols-1 gap-4">
         {disputes.map((dispute) => (
-          <Link key={dispute.id} href={`/disputes/${dispute.id}`} className="glass-card block p-5 transition hover:border-border-ec-strong">
+          <Link key={dispute.id} href={`/disputes/${dispute.id}`} className="glass-card block min-w-0 p-5 transition hover:border-border-ec-strong">
             <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="label-sm mb-1 text-text-dim">{dispute.claim_category.replaceAll("_", " ")}</p>
                 <p className="truncate text-text-ec">{dispute.claim}</p>
               </div>

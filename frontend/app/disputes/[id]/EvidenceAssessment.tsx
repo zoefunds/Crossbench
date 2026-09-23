@@ -14,7 +14,7 @@ interface AssessedItem {
 export function EvidenceAssessment({ items }: { items: AssessedItem[] | null }) {
   if (!items) return <p className="text-sm text-text-dim">No assessment recorded yet.</p>;
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {items.map((item) => (
         <div key={item.id} className="glass-card p-4">
           <div className="mb-2 flex items-center justify-between">

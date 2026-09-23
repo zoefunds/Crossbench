@@ -383,6 +383,49 @@ current traffic; worth revisiting (e.g. a short in-memory/KV TTL cache on
 the sync step, a few seconds, not the old cron-only staleness) if dispute
 volume or concurrent readers grow enough to matter.
 
+## Layout overflow bug on wide viewports (2026-09-24)
+
+User screenshot on a wide monitor (~1970 CSS px) showed dispute cards
+stretching edge-to-edge with claim text overflowing past the visible area,
+no visible card boundaries. Diagnosed with real DOM measurement (`getBoundingClientRect`
+via the browser tool's JS eval), not guesswork:
+
+- The outer page container (`mx-auto max-w-6xl px-6 py-16`) was correctly
+  constrained to 1152px and centered - confirmed via computed style.
+- But the dispute list's `<div className="grid gap-4">` had **no explicit
+  `grid-template-columns`**. An implicit CSS Grid track with no column
+  template sizes to the *unconstrained max-content width* of its children,
+  not its container's width - so the untruncated claim text's natural
+  (single-line, un-wrapped) width was pulling the whole grid track, and
+  therefore the card inside it, wider than the 1152px parent. Confirmed via
+  `getBoundingClientRect`: the card's `right` edge was at 2190px against a
+  1561px container edge before the fix, and 1537px (inside the 1561px
+  container) after.
+- Tailwind's `grid-cols-N` utilities compile to `repeat(N, minmax(0, 1fr))`
+  - the `minmax(0, ...)` is what actually constrains the track to the
+    container. Plain `grid` with no `grid-cols-*` doesn't get that.
+- Fix: added explicit `grid-cols-1` (with responsive `sm:`/`md:grid-cols-2`
+  kept as overrides) to all three bare `grid` usages in the app
+  (`disputes/page.tsx`'s list, `disputes/[id]/EvidenceAssessment.tsx`, and
+  the landing page's core-loop list) - the two that already had
+  `sm:grid-cols-2`/`md:grid-cols-2` had the same latent bug below their
+  breakpoint, just less visible with shorter content.
+- Also fixed a real but secondary flexbox issue: `min-w-0` alone on a flex
+  child doesn't make `truncate` reliable without `flex-1` (or another way
+  to claim available space) - fixed in `disputes/page.tsx` and
+  `profile/page.tsx`'s dispute-list rows.
+- Grid-based truncation elsewhere (the claimant/respondent 2-column grid on
+  the dispute detail page) was already safe - `grid-cols-2` already
+  compiles with `minmax(0, 1fr)`.
+
+Verified with real `getBoundingClientRect` measurements at a 1970px
+viewport (matching the user's screenshot) before and after, not just visual
+inspection - confirmed the card's right edge is now inside its container's
+right edge. Checked landing, disputes list, dispute detail (using the
+user's real `ec-2` dispute), and dispute-creation form at the same wide
+viewport - all correctly contained. Redeployed to
+`https://crossbench-app.vercel.app`.
+
 ## Next step
 
 Rewrite the backend section of ARCHITECTURE.md for Cloudflare Workers + D1,

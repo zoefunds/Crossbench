@@ -51,8 +51,8 @@ export default function ProfilePage() {
       <div className="space-y-3">
         {disputes.map((d) => (
           <Link key={d.id} href={`/disputes/${d.id}`} className="glass-card block p-4 transition hover:border-border-ec-strong">
-            <div className="flex items-center justify-between">
-              <p className="truncate text-sm text-text-ec">{d.claim}</p>
+            <div className="flex items-center justify-between gap-4">
+              <p className="min-w-0 flex-1 truncate text-sm text-text-ec">{d.claim}</p>
               <StatusBadge status={d.status} />
             </div>
           </Link>
