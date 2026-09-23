@@ -24,7 +24,7 @@ frontend/     Next.js app - Reown AppKit wallet connect, DESIGN.md tokens
 
 ## Live deployments
 
-- Frontend: https://frontend-tau-livid-gi1xp8ftb4.vercel.app
+- Frontend: https://crossbench-app.vercel.app
 - Backend API: https://crossbench-api.preciousmofeoluwa.workers.dev
 - Intelligent Contract (StudioNet): `0x6F1CeE0a07953EC2EE18b4d9DE36aB010Abc10d2` - see `CONTRACT_DEPLOYMENT.md` for how to redeploy and rewire your own instance
 
