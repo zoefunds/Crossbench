@@ -1,0 +1,26 @@
+name = "crossbench-api"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "evidence_court"
+database_id = "14f2b5b0-473f-417e-a72b-7ec949959374"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "NONCES"
+id = "962b55a4acfc438a9d37ee6e500604a0"
+
+[triggers]
+crons = ["*/2 * * * *"]
+
+[vars]
+GENLAYER_NETWORK = "studionet"
+GENLAYER_RPC_URL = "https://studio.genlayer.com/api"
+# CONTRACT_ADDRESS is set via `wrangler secret put CONTRACT_ADDRESS` once the
+# user deploys the Intelligent Contract - never hardcoded here.

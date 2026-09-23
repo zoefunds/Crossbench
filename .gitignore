@@ -1,0 +1,28 @@
+# Node
+node_modules/
+.next/
+out/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.glsim-venv/
+artifacts/
+.gltest_cache/
+
+# Env / secrets
+.env
+.env.local
+.env*.local
+*.local
+
+# Wrangler
+.wrangler/
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/

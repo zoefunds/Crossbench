@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+:root {
+  --ec-navy: #0a0e14;
+  --ec-navy-elevated: #0e131b;
+  --ec-card: #10161f;
+  --ec-border: rgba(255, 255, 255, 0.1);
+  --ec-border-strong: rgba(255, 255, 255, 0.2);
+  --ec-text: #e7eaee;
+  --ec-text-dim: #8b93a3;
+  --ec-cyan: #00f2ff;
+  --ec-cyan-dim: rgba(0, 242, 255, 0.12);
+  --ec-purple: #8b5cf6;
+  --ec-purple-dim: rgba(139, 92, 246, 0.1);
+  --ec-error: #ff6b6b;
+  --ec-success: #4ade80;
+  --font-headline: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono-data: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@theme inline {
+  --color-navy: var(--ec-navy);
+  --color-navy-elevated: var(--ec-navy-elevated);
+  --color-card: var(--ec-card);
+  --color-border-ec: var(--ec-border);
+  --color-border-ec-strong: var(--ec-border-strong);
+  --color-text-ec: var(--ec-text);
+  --color-text-dim: var(--ec-text-dim);
+  --color-cyan: var(--ec-cyan);
+  --color-cyan-dim: var(--ec-cyan-dim);
+  --color-purple: var(--ec-purple);
+  --color-purple-dim: var(--ec-purple-dim);
+  --color-error: var(--ec-error);
+  --color-success: var(--ec-success);
+  --font-headline: var(--font-headline);
+  --font-mono-data: var(--font-mono-data);
+}
+
+body {
+  background: var(--ec-navy);
+  color: var(--ec-text);
+  font-family: var(--font-headline);
+}
+
+.glass-card {
+  background: var(--ec-card);
+  border: 1px solid var(--ec-border);
+  border-radius: 0.75rem;
+}
+
+.glass-card-ai {
+  background: linear-gradient(180deg, var(--ec-purple-dim), transparent);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 0.75rem;
+  backdrop-filter: blur(20px);
+}
+
+.glow-active {
+  box-shadow: 0 0 12px 0 rgba(139, 92, 246, 0.5);
+}
+
+.data-mono {
+  font-family: var(--font-mono-data);
+  letter-spacing: -0.01em;
+}
+
+.label-sm {
+  font-family: var(--font-mono-data);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
