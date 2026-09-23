@@ -139,6 +139,49 @@ now guards every `readContract` call through `checkRpcBudget()` in
   `/disputes*` routes) already had try/catch or natural error propagation in
   place - no separate handling needed.
 
+## trigger_evaluation stall investigation, resolved (2026-09-23)
+
+Direct investigation against the live `Crossbench` deployment
+(`0x90639b4Cc538021aFe4d97C03D336B5e1854fA28`), driving `create_dispute` →
+`accept_dispute` → `submit_evidence` → `trigger_evaluation` through
+`genlayer_py`'s `GenLayerClient` directly (bypassing `gltest`'s pytest
+`Contract` wrapper entirely): **`trigger_evaluation` completed in 15.6
+seconds** - `MAJORITY_AGREE`, 5/5 validators, `execution_result: SUCCESS`,
+correct verdict computed (`INCONCLUSIVE`, both evidence items correctly
+flagged `IRRELEVANT_CONTENT` since both sides pointed at the same generic
+reference page in this test). Full receipt captured and inspected, not
+just a pass/fail assertion.
+
+**Conclusion: the contract logic was never the problem.** The three earlier
+10-12 minute stalls under `gltest`'s pytest harness (which led to removing
+the emit-to-self indirection - see above) happened while polling
+`contract.get_dispute(args=[...]).call()` in a loop. I initially guessed
+this was a stale-read artifact of that wrapper, but checked the source:
+`gltest`'s `.call()` default (`TransactionHashVariant.LATEST_NONFINAL`) is
+identical to `genlayer_py`'s own `read_contract` default, so that specific
+theory doesn't hold up and I'm not asserting it. The more defensible
+explanation, consistent with actual evidence: one of the earlier stalled
+runs captured a literal `502 Bad Gateway` from `studio.genlayer.com`
+mid-poll, and the failing runs used two distinct, previously-unfetched
+Wikipedia pages (real network renders needed for both), while this
+successful run reused an already-cached page - StudioNet's real,
+documented latency/congestion under load is the most evidence-backed
+explanation, not a code defect. **Removing the emit indirection remains
+the right call independently** (simpler, synchronous, no dependency on
+async self-call timing at all), but it should be understood as a
+legitimate simplification made under uncertainty, not confirmed to be
+"the fix" for a bug that this investigation now suggests may have been
+StudioNet-side the whole time.
+
+Practical takeaway for future sessions: don't read too much into a single
+stalled/slow real-StudioNet integration run. Real consensus latency varies
+a lot (15s here, other runs elsewhere in this project took minutes), and
+Studio itself returns real infrastructure errors (502s) under load - budget
+generous timeouts (5-10+ min) in integration tests for this reason, and
+don't assume a stall means the contract is broken without direct receipt
+inspection first (`genlayer receipt <hash> --stdout --stderr`, or a direct
+`genlayer_py` script like the one used here, not just a pytest assertion).
+
 ## Next step
 
 Rewrite the backend section of ARCHITECTURE.md for Cloudflare Workers + D1,
