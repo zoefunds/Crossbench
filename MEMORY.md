@@ -273,6 +273,47 @@ since the automated built-in browser has no wallet extension installed -
 that boundary is real and worth being explicit about rather than faking a
 "connected" state.
 
+## Real wallet transaction bug, found by the user with actual MetaMask (2026-09-23)
+
+The user connected a real MetaMask wallet (GenLayer Studio network, address
+`0x7401c...058Eb`) on the dispute-creation page and clicked "Stake 0.05 GEN
+and open dispute". MetaMask's Activity tab shows a transaction genuinely
+sent to `0xb7278A61...fE575` (GenLayer's consensus/relay contract - matches
+`genlayer network info`'s `mainContract`) for "-0 GEN" - this 0 is
+expected and correct, not a bug: GenLayer's architecture routes the actual
+stake value inside the signed rollup transaction's own calldata
+(`sim_config.signed_rollup_transaction`), not the outer `eth_sendTransaction`
+value field, so MetaMask's outer-transfer display showing 0 while the real
+value is encoded inside is normal. The wallet really did sign and broadcast
+something. But the app then threw **`Cannot convert undefined to a BigInt`**
+client-side.
+
+**Root cause**: `lib/genlayer.ts`'s `useGenLayerClient()` bridged the
+connected wallet to `genlayer-js` using `useConnectorClient().transport`
+cast as if it were a raw EIP-1193 provider. A viem `Client`'s `transport`
+is a different, wrapped interface - not wire-compatible with the raw
+`request({method, params}) -> JSON-RPC-shaped response` contract
+`genlayer-js`'s `EthereumProvider` type expects. Responses came back
+shaped differently than expected, and `genlayer-js` tried to `BigInt()` a
+field that came back `undefined` as a result.
+
+**Fix**: use `connector.getProvider()` (wagmi's own documented way to get
+the actual raw EIP-1193 provider - MetaMask's injected `window.ethereum`,
+WalletConnect's provider, etc.) instead. This is async (`Promise`-returning),
+so the hook now fetches it in a `useEffect` keyed on the connector and
+memoizes the `genlayer-js` client once the provider resolves, rather than
+trying to derive it synchronously from `useConnectorClient`.
+
+Could not reproduce/verify this one myself before the user hit it - the
+sandboxed built-in browser has no wallet extension installed, and Claude in
+Chrome (the user's real Chrome, which does have MetaMask) was not connected
+in this session when I tried to attach and debug live. Diagnosed and fixed
+by reasoning through the actual error message, the MetaMask Activity
+evidence, and the `genlayer-js`/wagmi/viem type signatures directly, not by
+reproducing it interactively. **Not yet re-verified with a real wallet
+transaction post-fix** - the user should retry staking a dispute on
+`https://crossbench-app.vercel.app` to confirm this is actually resolved.
+
 ## Next step
 
 Rewrite the backend section of ARCHITECTURE.md for Cloudflare Workers + D1,
