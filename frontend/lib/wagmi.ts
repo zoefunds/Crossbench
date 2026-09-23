@@ -1,19 +1,19 @@
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { cookieStorage, createStorage } from "wagmi";
-import { defineChain } from "viem";
+import { studionet as genlayerStudionet } from "genlayer-js/chains";
 
-// GenLayer StudioNet - id/rpc must match the value the deployed contract
-// actually lives on. NEXT_PUBLIC_GENLAYER_CHAIN_ID / _RPC_URL are set once
-// the contract address is configured (see CONTRACT_DEPLOYMENT.md).
-export const studionet = defineChain({
-  id: Number(process.env.NEXT_PUBLIC_GENLAYER_CHAIN_ID ?? 61999),
-  name: "GenLayer StudioNet",
-  nativeCurrency: { name: "GEN Token", symbol: "GEN", decimals: 18 },
-  rpcUrls: {
-    default: { http: [process.env.NEXT_PUBLIC_GENLAYER_RPC_URL ?? "https://studio.genlayer.com/api"] },
-  },
-  testnet: true,
-});
+// Use genlayer-js's own studionet chain object, not a hand-rolled one.
+// A plain viem `defineChain` with just id/name/rpcUrls/nativeCurrency looks
+// fine to wagmi/AppKit but is missing GenLayer-specific fields genlayer-js
+// reads internally when encoding a write (`consensusMainContract`,
+// `defaultConsensusMaxRotations`, `defaultNumberOfInitialValidators`, ...).
+// Without those, `consensusMaxRotations` resolved to `client.chain
+// .defaultConsensusMaxRotations` -> undefined -> a real "Cannot convert
+// undefined to a BigInt" crash on every real wallet write. Confirmed by
+// reading genlayer-js's own chain definition
+// (node_modules/genlayer-js/dist/chunk-*.js) - it's still built with
+// viem's `defineChain`, so it's a valid wagmi/viem Chain too.
+export const studionet = genlayerStudionet;
 
 export const reownProjectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID ?? "";
 

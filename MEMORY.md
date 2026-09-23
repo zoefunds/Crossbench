@@ -310,9 +310,39 @@ Chrome (the user's real Chrome, which does have MetaMask) was not connected
 in this session when I tried to attach and debug live. Diagnosed and fixed
 by reasoning through the actual error message, the MetaMask Activity
 evidence, and the `genlayer-js`/wagmi/viem type signatures directly, not by
-reproducing it interactively. **Not yet re-verified with a real wallet
-transaction post-fix** - the user should retry staking a dispute on
-`https://crossbench-app.vercel.app` to confirm this is actually resolved.
+reproducing it interactively.
+
+**This first fix (getProvider) was necessary but not sufficient** - the
+user retried after it deployed and got the identical "Cannot convert
+undefined to a BigInt" error again. Root-caused properly the second time
+by reading `genlayer-js`'s actual bundled source
+(`node_modules/genlayer-js/dist/chunk-XCQTIUTU.js`,
+`_sendConsensusCall`/`writeContract`): `consensusMaxRotations` defaults to
+`client.chain.defaultConsensusMaxRotations`, and other consensus-call
+encoding reads `client.chain.consensusMainContract` etc. My hand-rolled
+`studionet` chain object in `lib/wagmi.ts` (built with plain viem
+`defineChain`, only `id`/`name`/`rpcUrls`/`nativeCurrency`/`testnet`) had
+none of these GenLayer-specific fields - they were all `undefined`, and
+encoding an undefined value as a contract-call arg is exactly where
+"Cannot convert undefined to a BigInt" comes from. **Real fix**: `genlayer-js`
+ships its own correct `studionet` chain object (`genlayer-js/chains`,
+still built with viem's `defineChain` so it's a valid wagmi/AppKit network
+too) with `consensusMainContract`, `consensusDataContract`,
+`defaultNumberOfInitialValidators: 5`, `defaultConsensusMaxRotations: 3`,
+etc. already populated correctly - `lib/wagmi.ts` now imports and re-exports
+that instead of defining its own. This also matches the "don't invent APIs
+/ verify against the current SDK" instruction from the master prompt more
+literally than I had been - the chain object should have come from the SDK
+from the start, not been hand-built to look right at the type level.
+Backend's `genlayer-client.ts` still hand-rolls a minimal chain object for
+reads only (never writes) - left alone since it's confirmed working and
+the missing fields are write-path-only; noted here in case it ever needs
+extending to write.
+
+Build + typecheck clean, verified rendering correctly in the local preview
+after the fix, redeployed to `https://crossbench-app.vercel.app`. **Still
+not personally verified with a real wallet transaction** - waiting on the
+user to retry.
 
 ## Next step
 
