@@ -35,7 +35,8 @@ disputeRoutes.get("/disputes/:id", async (c) => {
   try {
     const live = await readContract(c.env, "get_dispute", [id]);
     return c.json(live);
-  } catch {
+  } catch (err) {
+    console.error(`[disputes] live read failed for ${id}:`, (err as Error).message);
     return c.json({ error: "dispute not found" }, 404);
   }
 });

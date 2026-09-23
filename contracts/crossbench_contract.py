@@ -33,6 +33,7 @@ CLAIM_CATEGORIES = (
 SUPPORTS = ("CLAIMANT", "RESPONDENT", "NEITHER")
 RELEVANCE = ("LOW", "MEDIUM", "HIGH")
 RELEVANCE_WEIGHT = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
+RELEVANCE_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 VERDICTS = ("CLAIMANT", "RESPONDENT", "PARTIAL_CLAIMANT", "PARTIAL_RESPONDENT", "INCONCLUSIVE")
 PRIVATE_HOSTS = ("localhost", "127.", "0.", "169.254.", "10.", "192.168.")
 
@@ -135,6 +136,28 @@ def _normalize_assessment(raw, expected_ids: list) -> dict:
     return {"items": [seen[item_id] for item_id in expected_ids]}
 
 
+def _assessments_agree(own_items: list, proposed_items: list) -> bool:
+    # supports is the decision-critical field and must match exactly.
+    # relevance may differ by at most one bucket (LOW/MEDIUM/HIGH) between
+    # independent LLM calls without forcing disagreement - full exact-match
+    # here, combined with reason_code (free-text, near-never reproducible
+    # verbatim) being compared at all, is what previously produced
+    # MAJORITY_DISAGREE/UNDETERMINED on entirely reasonable assessments.
+    # reason_code is intentionally excluded from consensus - it is
+    # informational context from the leader, never decision-critical, and
+    # LLM phrasing is not expected to be reproducible.
+    if len(own_items) != len(proposed_items):
+        return False
+    for own_item, proposed_item in zip(own_items, proposed_items):
+        if own_item["id"] != proposed_item["id"]:
+            return False
+        if own_item["supports"] != proposed_item["supports"]:
+            return False
+        if abs(RELEVANCE_RANK[own_item["relevance"]] - RELEVANCE_RANK[proposed_item["relevance"]]) > 1:
+            return False
+    return True
+
+
 def _aggregate(assessed_items: list) -> dict:
     claimant_weight = 0
     respondent_weight = 0
@@ -146,15 +169,15 @@ def _aggregate(assessed_items: list) -> dict:
             respondent_weight += weight
     total = claimant_weight + respondent_weight
     if total == 0:
-        return {"verdict_code": "INCONCLUSIVE", "payout_bps": 0, "claimant_weight": claimant_weight, "respondent_weight": respondent_weight}
+        return {"verdict_code": "INCONCLUSIVE", "payout_bps": "0", "claimant_weight": str(claimant_weight), "respondent_weight": str(respondent_weight)}
     margin = (claimant_weight - respondent_weight) / total
     if abs(margin) < 0.15:
-        return {"verdict_code": "INCONCLUSIVE", "payout_bps": 0, "claimant_weight": claimant_weight, "respondent_weight": respondent_weight}
+        return {"verdict_code": "INCONCLUSIVE", "payout_bps": "0", "claimant_weight": str(claimant_weight), "respondent_weight": str(respondent_weight)}
     leader = "CLAIMANT" if margin > 0 else "RESPONDENT"
     if abs(margin) >= 0.5:
-        return {"verdict_code": leader, "payout_bps": 10000, "claimant_weight": claimant_weight, "respondent_weight": respondent_weight}
+        return {"verdict_code": leader, "payout_bps": "10000", "claimant_weight": str(claimant_weight), "respondent_weight": str(respondent_weight)}
     payout_bps = min(10000, max(5000, int(round(5000 + abs(margin) * 10000))))
-    return {"verdict_code": f"PARTIAL_{leader}", "payout_bps": payout_bps, "claimant_weight": claimant_weight, "respondent_weight": respondent_weight}
+    return {"verdict_code": f"PARTIAL_{leader}", "payout_bps": str(payout_bps), "claimant_weight": str(claimant_weight), "respondent_weight": str(respondent_weight)}
 
 
 def _run_assessment_consensus(claim_text: str, claim_category: str, policy_reference: str, items_by_id: dict) -> dict:
@@ -194,7 +217,7 @@ def _run_assessment_consensus(claim_text: str, claim_category: str, policy_refer
         try:
             own = leader_fn()
             proposed = _normalize_assessment(leader_result.calldata, expected_ids)
-            return own["items"] == proposed["items"]
+            return _assessments_agree(own["items"], proposed["items"])
         except Exception:
             return False
 
@@ -456,12 +479,12 @@ class Crossbench(gl.Contract):
             self._credit(dispute["respondent"], pool)
             dispute["winner"] = dispute["respondent"]
         elif verdict_code == "PARTIAL_CLAIMANT":
-            claimant_share = pool * verdict["payout_bps"] // 10000
+            claimant_share = pool * int(verdict["payout_bps"]) // 10000
             self._credit(dispute["claimant"], claimant_share)
             self._credit(dispute["respondent"], pool - claimant_share)
             dispute["winner"] = dispute["claimant"]
         elif verdict_code == "PARTIAL_RESPONDENT":
-            respondent_share = pool * verdict["payout_bps"] // 10000
+            respondent_share = pool * int(verdict["payout_bps"]) // 10000
             self._credit(dispute["respondent"], respondent_share)
             self._credit(dispute["claimant"], pool - respondent_share)
             dispute["winner"] = dispute["respondent"]

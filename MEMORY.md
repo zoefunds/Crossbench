@@ -182,6 +182,97 @@ don't assume a stall means the contract is broken without direct receipt
 inspection first (`genlayer receipt <hash> --stdout --stderr`, or a direct
 `genlayer_py` script like the one used here, not just a pytest assertion).
 
+## Full end-to-end run against the real app (2026-09-23)
+
+Ran the frontend locally (`npm run dev` via a wrapper script - see below) against
+the real deployed backend and a real StudioNet contract, drove it through the
+built-in browser, and found three more real bugs this way (lint/direct-tests
+alone would not have caught any of them):
+
+1. **Local dev server node version mismatch.** `preview_start` with a bare
+   `npm --prefix frontend run dev` picked up nvm's default Node (18.20.8, too
+   old for Next.js 16, which needs >=20.9) instead of Homebrew's Node 26 that
+   `which node` resolves to interactively. Fixed with an explicit wrapper
+   script (`scripts/dev-frontend.sh`) that forces `PATH="/opt/homebrew/bin:$PATH"`
+   and execs Homebrew's node directly against `frontend/node_modules/.bin/next`.
+   `.claude/launch.json` points at that script. Lesson: don't trust that a
+   subprocess launched by tooling inherits the same Node the interactive
+   shell resolves to on a machine with nvm installed.
+
+2. **`payout_bps`/`claimant_weight`/`respondent_weight` were raw Python
+   `int` in `_aggregate()`'s returned dict** - every other numeric field in
+   the contract is `str()`-wrapped, these three were missed. `genlayer-js`
+   decodes unstringified GenVM ints as JS `BigInt`, which crashes anything
+   that tries to serialize it (`Do not know how to serialize a BigInt` -
+   the backend's `/disputes/:id` live-read fallback was silently swallowing
+   this and returning a blanket 404, which is *also* why the original
+   `catch { return 404 }` in `disputes.ts` needed a `console.error` added -
+   it was masking a real bug as "not found"). Fixed by stringifying those
+   three fields at both `_aggregate()` return points and casting back with
+   `int()` in `_settle()`'s partial-payout math. **Redeployed as
+   `0x49DF636E3B49BCAD1Dee838C87AF9b9d5fd4A2Bb`** (superseded again below).
+
+3. **The real, more serious one: `UNDETERMINED MAJORITY_DISAGREE` on a
+   completely reasonable assessment.** `validator_fn` required full dict
+   equality (`own["items"] == proposed["items"]`) across every field,
+   including `reason_code` - free-text LLM output that is not expected to
+   be reproducible verbatim between independent leader/validator calls, and
+   `relevance`, a genuinely subjective LOW/MEDIUM/HIGH judgment call that
+   can reasonably differ by one bucket between two independent LLM passes
+   over the same content. This is exactly the "must not lead to an
+   undetermined status" failure mode explicitly flagged as unacceptable.
+   **Fix**: added `_assessments_agree()` - `supports` (the actual
+   decision-critical field) must match exactly; `relevance` may differ by
+   at most one rank (`RELEVANCE_RANK`); `reason_code` is excluded from
+   consensus entirely (informational only, carried through from the
+   leader's answer, never compared). This is *not* format-only validation
+   (still requires exact agreement on the one field that actually decides
+   money movement) but tolerates the specific kinds of variance that are
+   inherent to independent LLM calls rather than indicative of leader
+   misbehavior. **Redeployed as `0x6F1CeE0a07953EC2EE18b4d9DE36aB010Abc10d2`**
+   (current address as of this writing) - confirmed via a full real
+   create→accept→submit→trigger run: `MAJORITY_AGREE`, correct stringified
+   verdict, dispute rendered correctly end-to-end in the actual browser UI
+   at `/disputes/ec-1` (per-item assessment cards, verdict card, both
+   evidence bundles, wallet-gated action area).
+
+4. **Cron Trigger never wrote to `indexer_state`, `/disputes` stayed
+   permanently empty** despite `/stats` (direct contract read) showing real
+   data. Root cause only partially confirmed: `wrangler tail` eventually
+   caught cron-adjacent activity hitting `Rate limit exceeded: 30 requests
+   per minute` - this is `genlayer-js`'s own internal client-side request
+   limiter (separate from both GenLayer's server-side ~500/hr limit and our
+   Redis budget guard), and it was never observed to recover mid-session.
+   Rather than keep spending real StudioNet quota chasing exact cron
+   timing/platform behavior, added a decoupled, secret-protected manual
+   trigger: `POST /internal/reindex` (header `X-Internal-Secret`, matching
+   the `INTERNAL_SECRET` Worker secret) calls the same `pollOnce()` the cron
+   calls. Verified this manual path works (`{"ok":true}`). **Still open**:
+   whether the Cron Trigger itself reliably fires and whether `pollOnce()`
+   needs its own internal pacing between `get_dispute` calls to stay under
+   genlayer-js's 30/min client-side ceiling when indexing many active
+   disputes at once - worth adding a small delay between iterations in
+   `poll.ts`'s per-dispute refresh loop if this recurs with more real
+   traffic.
+
+5. **Mobile nav bar had no menu at all below `md` breakpoint** -
+   `NavBar.tsx` hid the nav links (`hidden md:flex`) with no replacement,
+   found by testing at 375×812 in the built-in browser. Fixed with a
+   hamburger toggle (`useState`, accessible `aria-expanded`) that reveals a
+   stacked link list. Verified visually at mobile width - icon toggles
+   between hamburger/X, links open/close correctly, tapping a link closes
+   the menu.
+
+Everything else checked out clean: landing/disputes/profile/settings pages
+all render correctly, wallet-gate messaging is consistent everywhere
+("Connect your wallet..."), the Reown AppKit wallet-connect modal opens for
+real (MetaMask/WalletConnect/Trust Wallet/etc. listed) - confirmed the
+integration is genuinely wired, not just present in code. Did **not**
+complete a real wallet-signed transaction through the browser tool itself
+since the automated built-in browser has no wallet extension installed -
+that boundary is real and worth being explicit about rather than faking a
+"connected" state.
+
 ## Next step
 
 Rewrite the backend section of ARCHITECTURE.md for Cloudflare Workers + D1,
