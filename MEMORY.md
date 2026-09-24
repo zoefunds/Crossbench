@@ -479,9 +479,48 @@ almost immediately (one lost its worktree after being resumed, one
 self-aborted citing "effort budget" concerns without doing any real work)
 - ended up doing the implementation directly in the main session instead.
 
+## Wallet button theming + StudioNet write-path rate limiting (2026-09-24)
+
+Two follow-ups after the redesign shipped:
+
+1. **Wallet connect button color.** The `<appkit-button>` web component
+   from `@reown/appkit` did not visibly respond to `themeVariables` /
+   `--w3m-accent` in `createAppKit()` (traced through
+   `node_modules/@reown/appkit-ui/.../ThemeHelperUtil.js` -
+   `getW3mThemeVariables` in `appkit-common` does read `--w3m-accent`
+   correctly, so the wiring isn't wrong, but the pre-built button's own
+   internal styling wasn't picking it up reliably in testing). Rather than
+   keep fighting the web component's internals, replaced it in
+   `WalletConnectButton.tsx` with a fully custom button built on
+   `useAppKit()` (for `open()`) and `useAppKitAccount()` (for
+   address/connection state) from `@reown/appkit/react` - both public
+   hooks, no private API. This gives full control over styling (now uses
+   the same cyan-fill button as the rest of the app) while keeping the
+   exact same modal/connect flow (verified: clicking it still opens the
+   real Reown modal with MetaMask/WalletConnect/etc).
+
+2. **"RPC ... eth_sendRawTransaction: Request is being rate limited"** on
+   dispute creation. This is GenLayer StudioNet's own RPC node throttling
+   raw transaction submission - not our backend's read-side RPC budget
+   guard (`backend/src/lib/genlayer-client.ts`'s `checkRpcBudget`), which
+   only guards `readContract` calls made server-side; wallet writes go
+   directly from the browser to the chain and never touch our backend at
+   all. Fixed in `frontend/lib/tx.ts`: `runWrite` now retries
+   `client.writeContract` with exponential backoff (1.5s/3s/6s, 4 attempts)
+   specifically when the error message matches a rate-limit pattern on a
+   send-transaction call, surfacing a live "retrying in Ns..." notice via
+   `TxStatus` instead of silently hanging; if it still fails after
+   retries, throws a plain user-facing message explaining it's the network
+   throttling writes, not an app bug, rather than the raw viem/RPC error
+   string. `TxStatus.tsx` updated to render that in-progress retry notice
+   in the app's amber accent instead of the red failure color, since it's
+   informational, not a failure.
+
+Both verified with `tsc --noEmit` and `next build`, deployed to
+`https://crossbench-app.vercel.app`.
+
 ## Next step
 
-Consider fixing the Reown AppKit button theming gap noted above if it
-matters to the user, then rewrite the backend section of ARCHITECTURE.md
-for Cloudflare Workers + D1, then write contract direct/integration tests
-with the `genlayer-dev` testing skills.
+Rewrite the backend section of ARCHITECTURE.md for Cloudflare Workers +
+D1, then write contract direct/integration tests with the `genlayer-dev`
+testing skills.
