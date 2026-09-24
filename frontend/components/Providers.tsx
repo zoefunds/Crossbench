@@ -19,6 +19,13 @@ if (reownProjectId) {
     },
     features: { analytics: false, email: false, socials: [] },
     themeMode: "dark",
+    themeVariables: {
+      "--w3m-accent": "#4cd7f6",
+      "--w3m-color-mix": "#0a0e16",
+      "--w3m-color-mix-strength": 30,
+      "--w3m-border-radius-master": "2px",
+      "--w3m-font-family": "var(--font-headline), ui-sans-serif, system-ui, sans-serif",
+    },
   });
 }
 

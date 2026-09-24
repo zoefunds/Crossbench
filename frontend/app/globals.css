@@ -1,20 +1,29 @@
 @import "tailwindcss";
 
+/*
+ * Lex Cryptographica design system, adapted for Crossbench.
+ * Token names (--color-navy, --color-cyan, --color-purple, ...) are kept
+ * stable so existing component/page markup doesn't need renaming - only
+ * the underlying values changed to the new obsidian/cyan/amber palette.
+ * "purple" now carries the design system's amber "secondary" (active
+ * stake / contested / volatile-state) color, not literal purple.
+ */
 :root {
-  --ec-navy: #0a0e14;
-  --ec-navy-elevated: #0e131b;
-  --ec-card: #10161f;
-  --ec-border: rgba(255, 255, 255, 0.1);
-  --ec-border-strong: rgba(255, 255, 255, 0.2);
-  --ec-text: #e7eaee;
-  --ec-text-dim: #8b93a3;
-  --ec-cyan: #00f2ff;
-  --ec-cyan-dim: rgba(0, 242, 255, 0.12);
-  --ec-purple: #8b5cf6;
-  --ec-purple-dim: rgba(139, 92, 246, 0.1);
+  --ec-navy: #0a0e16;
+  --ec-navy-elevated: #0f131c;
+  --ec-card: #1c2028;
+  --ec-card-high: #262a33;
+  --ec-border: rgba(190, 201, 214, 0.14);
+  --ec-border-strong: rgba(190, 201, 214, 0.28);
+  --ec-text: #dfe2ee;
+  --ec-text-dim: #9aa4b2;
+  --ec-cyan: #4cd7f6;
+  --ec-cyan-dim: rgba(76, 215, 246, 0.12);
+  --ec-purple: #ffb95f;
+  --ec-purple-dim: rgba(255, 185, 95, 0.1);
   --ec-error: #ff6b6b;
   --ec-success: #4ade80;
-  --font-headline: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-headline: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono-data: "JetBrains Mono", ui-monospace, monospace;
 }
 
@@ -22,6 +31,7 @@
   --color-navy: var(--ec-navy);
   --color-navy-elevated: var(--ec-navy-elevated);
   --color-card: var(--ec-card);
+  --color-card-high: var(--ec-card-high);
   --color-border-ec: var(--ec-border);
   --color-border-ec-strong: var(--ec-border-strong);
   --color-text-ec: var(--ec-text);
@@ -45,18 +55,21 @@ body {
 .glass-card {
   background: var(--ec-card);
   border: 1px solid var(--ec-border);
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
 }
 
 .glass-card-ai {
-  background: linear-gradient(180deg, var(--ec-purple-dim), transparent);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  border-radius: 0.75rem;
-  backdrop-filter: blur(20px);
+  background: linear-gradient(180deg, var(--ec-cyan-dim), transparent);
+  border: 1px solid rgba(76, 215, 246, 0.3);
+  border-radius: 0.5rem;
 }
 
 .glow-active {
-  box-shadow: 0 0 12px 0 rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 12px 0 rgba(76, 215, 246, 0.35);
+}
+
+.glow-stake {
+  box-shadow: 0 0 12px 0 rgba(255, 185, 95, 0.3);
 }
 
 .data-mono {
@@ -67,7 +80,7 @@ body {
 .label-sm {
   font-family: var(--font-mono-data);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }

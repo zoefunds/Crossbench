@@ -426,8 +426,62 @@ user's real `ec-2` dispute), and dispute-creation form at the same wide
 viewport - all correctly contained. Redeployed to
 `https://crossbench-app.vercel.app`.
 
+## Visual redesign: Lex Cryptographica theme (2026-09-24)
+
+User supplied a full design system ("Lex Cryptographica" - dark
+"Cryptographic Institutionalism" aesthetic, obsidian surfaces, electric
+cyan primary, amber secondary, Hanken Grotesk + JetBrains Mono) as
+DESIGN.md plus four static Tailwind-CDN HTML mockups under
+`~/Documents/stitch_dark_theme_concept_design/`, asked for a full frontend
+redesign. Explicitly confirmed via clarifying question that this applies to
+the Crossbench project itself (not a rename to a different "Sunder"
+project - an earlier ambiguous message had referenced that name).
+
+Approach: kept every existing CSS custom-property token name in
+`globals.css` (`--color-navy`, `--color-cyan`, `--color-purple`,
+`--color-text-ec`, etc.) and only swapped the underlying values to the new
+palette, instead of renaming tokens and touching call sites across ~15
+files. This meant most page/component files (disputes list, dispute
+detail, dispute creation, evidence editor, profile, settings) picked up
+the new theme automatically through the shared `glass-card`/`label-sm`/
+`data-mono` utility classes without needing individual edits - lower risk,
+same visual result. Files actually edited: `globals.css` (full palette +
+`.glass-card`/`.label-sm` restyle), `layout.tsx` (Manrope -> Hanken
+Grotesk), `Logo.tsx` (gradient colors), `NavBar.tsx` (sticky blurred
+header, StudioNet status pill, mono nav labels), `StatusBadge.tsx` (tinted
+pill chips per the design's Verified/Disputed spec, with a pulse dot on
+active states), `page.tsx` (landing hero/loop/reference-scenario
+sections), `Providers.tsx` (Reown AppKit `themeVariables` to match cyan
+accent - note: the AppKit `appkit-button` web component did not visibly
+pick up `--w3m-accent` in local testing, so the wallet-connect button
+currently still renders in Reown's default blue; this is a known cosmetic
+gap in a third-party widget, not a bug in our CSS).
+
+Deliberately did NOT fabricate any UI content: the landing page's original
+copy (no fake stats like the mockup's "842,500 GEN staked") was kept as-is
+rather than inventing numbers with no real data source; the dispute-detail
+page's real per-item validator assessment data (from
+`preliminary_assessment`/`final_assessment`) was kept and just restyled,
+rather than inventing the mockup's fictional "7 named validator nodes with
+individual LLM reasoning" - the contract does not expose that level of
+detail today (or, if it does, the frontend/backend types were not asserted
+to include it, so it was not assumed).
+
+Contract and backend were not touched - pure frontend visual/CSS layer.
+Verified with `tsc --noEmit` (clean) and `next build` (clean), then visual
+checks via the local dev server at desktop and 375px mobile widths on
+landing, disputes list, and a real live dispute detail page (`ec-1`) -
+all correctly rendering real on-chain data, no layout regressions.
+Redeployed to `https://crossbench-app.vercel.app`.
+
+Two background subagents were tried first for this task and both bailed
+almost immediately (one lost its worktree after being resumed, one
+self-aborted citing "effort budget" concerns without doing any real work)
+- ended up doing the implementation directly in the main session instead.
+
 ## Next step
 
-Rewrite the backend section of ARCHITECTURE.md for Cloudflare Workers + D1,
-then write contract direct/integration tests with the `genlayer-dev`
-testing skills, then scaffold the Workers backend.
+Consider fixing the Reown AppKit button theming gap noted above if it
+matters to the user, then rewrite the backend section of ARCHITECTURE.md
+for Cloudflare Workers + D1, then write contract direct/integration tests
+with the `genlayer-dev` testing skills.

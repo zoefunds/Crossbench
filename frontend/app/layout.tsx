@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { Manrope, JetBrains_Mono } from "next/font/google";
+import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { NavBar } from "@/components/NavBar";
 
-const manrope = Manrope({ variable: "--font-headline", subsets: ["latin"] });
+const hankenGrotesk = Hanken_Grotesk({ variable: "--font-headline", subsets: ["latin"] });
 const jetbrainsMono = JetBrains_Mono({ variable: "--font-mono-data", subsets: ["latin"] });
 
 export const metadata: Metadata = {
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${manrope.variable} ${jetbrainsMono.variable} h-full antialiased`}>
+    <html lang="en" className={`${hankenGrotesk.variable} ${jetbrainsMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-navy text-text-ec">
         <Providers>
           <NavBar />
