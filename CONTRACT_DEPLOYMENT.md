@@ -1,21 +1,33 @@
 # Deploying the Crossbench Intelligent Contract
 
-You deploy the contract yourself - this is deliberate (see MEMORY.md). Once
-deployed, give the address back and it gets wired into the backend and
-frontend config.
+The project's original default was that the user deploys the contract
+themselves. That was explicitly overridden: the user said "deploy the
+address yourself," so Claude now deploys directly via the `genlayer` CLI
+when a (re)deploy is needed, then wires the resulting address into the
+backend and frontend config itself. This doc describes that actual
+workflow, not the original user-deploys default.
 
-## 1. Deploy via GenLayer Studio / CLI
+**Current live address (StudioNet):** `0x6F1CeE0a07953EC2EE18b4d9DE36aB010Abc10d2`
+(also recorded in `README.md`). Runner: `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`.
+
+Redeploy whenever the contract source changes in a way that needs a fresh
+address (GenLayer contracts aren't upgradeable in place) - this has
+happened several times already for real bug fixes (see `MEMORY.md` for the
+BigInt-serialization and consensus-agreement fixes that each required a
+redeploy).
+
+## 1. Deploy via the GenLayer CLI
 
 The contract lives at `contracts/crossbench_contract.py`. It has no
 constructor arguments.
 
 ```bash
-genlayer deploy --contract contracts/crossbench_contract.py --network studionet
+genlayer deploy contracts/crossbench_contract.py --network studionet
 ```
 
-(Use whatever the current GenLayer CLI deploy command is for your installed
-version - verify against `genlayer --help` / current docs, since CLI flags
-change between releases.)
+(Verify the exact flags against `genlayer --help` for your installed CLI
+version before relying on the command above verbatim - GenLayer CLI flags
+have changed between releases during this project.)
 
 Before deploying, re-run the checks that already passed in this repo, to
 confirm nothing has drifted:
@@ -39,7 +51,18 @@ npx wrangler secret put CONTRACT_ADDRESS
 
 Set `NEXT_PUBLIC_CONTRACT_ADDRESS` to the deployed address:
 - Locally: add it to `frontend/.env.local`
-- On Vercel: `vercel env add NEXT_PUBLIC_CONTRACT_ADDRESS`
+- On Vercel: `vercel env rm NEXT_PUBLIC_CONTRACT_ADDRESS production` (if one
+  is already set) then `vercel env add NEXT_PUBLIC_CONTRACT_ADDRESS production`
+
+`NEXT_PUBLIC_*` vars are baked in at build time, not read at runtime - a
+Vercel env var change alone does **not** update the already-deployed site.
+After changing it, redeploy: `vercel deploy --prod` from `frontend/`, then
+repoint the canonical alias since Vercel does not do this automatically on
+promote:
+
+```bash
+vercel alias set <new-deployment-url> crossbench-app.vercel.app
+```
 
 ## 3. Verify the wiring
 

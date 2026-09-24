@@ -25,20 +25,20 @@ user 2026-09-23 — do not merge or confuse the two.
 |---|---|
 | Backend stack | ~~PostgreSQL, self-run~~ **SUPERSEDED 2026-09-23: Cloudflare Workers + D1 (SQLite-based). User: "everything on Cloudflare, no more Fly." No external Postgres.** |
 | Backend hosting | ~~Fly.io~~ **SUPERSEDED 2026-09-23: Cloudflare Workers only.** Workers are edge/serverless with no cold-start "server died" failure mode — arguably a better fit for the 24/7 requirement than a Fly machine that can crash and needs auto-restart. |
-| Authentication | External wallet connect (MetaMask/Rainbow/Zerion), SIWE-style signed-challenge auth. Connecting a wallet alone is never treated as authentication. |
+| Authentication | External wallet connect via Reown AppKit (surfaces MetaMask, WalletConnect, Trust Wallet, Binance Wallet, SafePal, and 80+ more — not just the original three named in discovery), SIWE-style signed-challenge auth. Connecting a wallet alone is never treated as authentication. |
 | Dispute scope (v1) | Narrow: moderation-appeal reference case only. Generalize after the core loop is proven. |
-| Evidence bundle cap | 3 items per party. Web pages + on-chain references only — no arbitrary file uploads. |
+| Evidence bundle cap | 3 items per party (plus up to 2 additive challenge items per party). Web pages + on-chain references only — no arbitrary file uploads. |
 | Counter-stake | Required. Responding party must counter-stake within the response window or claimant wins by default/timeout. |
 | Challenge window | Fixed 48 hours for all disputes (not configurable in v1). |
-| Contract deployment | User deploys the contract themselves via GenLayer Studio/CLI. Claude does NOT deploy it. Contract address is supplied by the user after deployment and wired into config. |
+| Contract deployment | ~~User deploys the contract themselves via GenLayer Studio/CLI. Claude does NOT deploy it.~~ **SUPERSEDED: user said "deploy the address yourself" — Claude now deploys directly via the `genlayer` CLI when a (re)deploy is needed, and wires the resulting address into both the backend Worker secret and the frontend env var itself. See `CONTRACT_DEPLOYMENT.md`.** |
 | Frontend host | Vercel (CLI already installed locally). |
-| Backend host | Fly.io (CLI already installed locally). |
+| Backend host | ~~Fly.io~~ **Cloudflare Workers** (see Backend hosting row above — this row was left stale after that supersession; corrected here). |
 | Socials | Connection-based (OAuth-style), never raw username typing, to prevent impersonation. |
 
 ## Reference material (inspiration, not copy — see anti-plagiarism note below)
 
-- `~/Downloads/DESIGN.md` — dark "Technological Elegance" design token spec. Use as the visual/design-system reference for Crossbench's frontend.
-- `~/Downloads/dashboard.html`, `escrow.html`, `Transactions.html`, `Ai-coach.html` — component/layout prototypes from the same batch as DESIGN.md. Use as UI reference, reinterpreted for Crossbench's actual flows (dispute creation, evidence bundles, verdict/settlement), not copy-pasted.
+- ~~`~/Downloads/DESIGN.md` — dark "Technological Elegance" design token spec.~~ **SUPERSEDED 2026-09-24**: the live frontend theme is now "Lex Cryptographica" (obsidian/cyan/amber, Hanken Grotesk + JetBrains Mono), sourced from `~/Documents/stitch_dark_theme_concept_design/DESIGN.md` and four accompanying HTML mockups in the same directory — see the "Visual redesign" entry below for what actually shipped. The original "Technological Elegance" tokens this row describes are no longer in use anywhere in the code.
+- `~/Downloads/dashboard.html`, `escrow.html`, `Transactions.html`, `Ai-coach.html` — component/layout prototypes from the original "Technological Elegance" batch, superseded the same way as the DESIGN.md row above. No longer the active visual reference.
 - `~/Downloads/RialoCourt.html` — **excluded**. Its own header comment says it's "Rebranded from LexCourt / DisputeCourt", running on Base Sepolia + USDC. Chain of renamed reused projects — exactly what the review team's instruction #3 (plagiarism / renamed examples) flags. Not used anywhere in this build.
 - `/Users/macbook/source-stake/contracts/veritine_contract.py` (1892 lines) and `/Users/macbook/Witness-Weaver/contracts/witnessweave_contract.py` (1024 lines) — architectural pattern reference only (escrow custody/emission pattern, nondeterministic/deterministic separation, state machine structure). Crossbench's contract is a new implementation for a different primitive (two-party evidence-weighted disputes, not milestone escrow or witness attestation) — not a renamed copy.
 - `/Users/macbook/Meme-olympics/contracts/meme_olympics.py` — reference for the LLM's structured, adversarial-content-resistant visual/content interpretation pattern.
@@ -77,7 +77,6 @@ The custody/emission pattern Crossbench's contract must follow:
 - [x] 2026-09-23 — Backend scaffolded: Cloudflare Workers (Hono) + D1 + KV, in `backend/`. SIWE auth (nonce + signature verify, JWT access token + D1-backed refresh session), D1 schema (`migrations/0001_init.sql`: users, sessions, siwe_nonces, social_connections, disputes, evidence_items, verdicts, indexer_state, rate_limit_counters), read-only dispute API backed by the D1 index with live-contract fallback, D1-backed fixed-window rate limiting, Cron Trigger indexer (`src/indexer/poll.ts`) that mirrors contract state into D1 without ever computing or trusting a verdict itself, social-connection OAuth-flow skeleton (explicitly not a free-text username field, per instruction). `npx tsc --noEmit` clean, `npx wrangler deploy --dry-run` bundles successfully with all bindings resolving.
   - Adapted the `genlayer-js`-under-Workers fix and the Cron-indexer pattern from the user's own `Verdict-Market/backend` (already-solved problems: `window.ethereum` branch crashes under Workers unless an `account` object is attached via `createAccount()`; D1 upsert-on-conflict indexing shape) - same technical fix, re-implemented for Crossbench's schema and D1 instead of Postgres, not a copy-paste of the other project's business logic.
   - **Not yet done**: real OAuth provider registration for social connections (deliberately left as an explicit 501 "not configured yet" rather than faked), `wrangler d1 create` / `wrangler kv namespace create` haven't been run yet (need the user's Cloudflare account), `CONTRACT_ADDRESS` secret not set (waiting on user's deployment), no frontend yet to exercise these endpoints from a real browser flow.
-- [ ] Frontend (Next.js, wallet connect, dispute/evidence/verdict flows, DESIGN.md tokens)
 - [x] 2026-09-23 — Frontend scaffolded and built: Next.js 16 (App Router), `frontend/`. This Next.js version has real breaking changes vs older training data (`params` is a `Promise` in page props, route typing via generated `PageProps<>`/`LayoutProps<>` helpers) - confirmed against `node_modules/next/dist/docs/` before writing route code, per the project's own AGENTS.md warning.
   - Pages: landing (`/`), dispute browse (`/disputes`), dispute creation (`/disputes/new`), dispute detail (`/disputes/[id]` - per-item validator assessment, verdict, all lifecycle actions), profile (`/profile`), settings (`/settings` - SIWE sign-in + social connections). History is the `/disputes` list filtered to the connected wallet on `/profile`; no separate route needed for v1.
   - Real value-transfer path: `lib/genlayer.ts` builds a `genlayer-js` client from the connected wallet's own EIP-1193 provider (via wagmi's `useConnectorClient`), so every write (`create_dispute`, `accept_dispute`, `submit_evidence`, `submit_challenge_evidence`, `trigger_evaluation`, `finalize_dispute`, `withdraw_credit`) is signed client-side by the user's real wallet - the frontend never holds a key. `lib/tx.ts` tracks the actual SDK lifecycle (`writeContract` → `waitForTransactionReceipt({status: ACCEPTED})` → `waitForTransactionReceipt({status: FINALIZED})`, reading `consensus_data.leader_receipt[0].execution_result`) - never a client-side timer, never a string-matched field.
@@ -519,8 +518,31 @@ Two follow-ups after the redesign shipped:
 Both verified with `tsc --noEmit` and `next build`, deployed to
 `https://crossbench-app.vercel.app`.
 
+## Docs pass (2026-09-24)
+
+Full documentation sweep per explicit user request ("write and update all
+possible docs... remove stale data"). Updated `README.md`,
+`ARCHITECTURE.md`, `CONTRACT_DEPLOYMENT.md`, `frontend/README.md`
+(previously the untouched `create-next-app` boilerplate — replaced with
+real project docs: stack, env vars, structure, design-system notes, known
+layout gotchas), and added `docs/CONTRACT_SPEC.md` (referenced from
+`ARCHITECTURE.md` since the original build but never actually written
+until now — full method/state spec derived directly from the contract
+source, including `cancel_dispute`, which existed in code but wasn't
+documented anywhere).
+
+Corrected in this file too: the "answers on record" table's contract-
+deployment and backend-host rows (both left stale after later
+supersessions), and the reference-material section's design-system path
+(pointed at the abandoned "Technological Elegance" tokens instead of the
+"Lex Cryptographica" theme actually shipped on 2026-09-24).
+
 ## Next step
 
-Rewrite the backend section of ARCHITECTURE.md for Cloudflare Workers +
-D1, then write contract direct/integration tests with the `genlayer-dev`
-testing skills.
+No specific next step has been requested. Candidates, in rough priority
+order if asked to pick: (1) the Reown AppKit connect-modal theming gap
+noted in the redesign entry above (button is fixed, the modal itself
+still uses Reown's own approximate dark theme), (2) real OAuth provider
+registration for social connections (currently an explicit 501 "not
+configured yet" skeleton), (3) an accessibility pass on the frontend
+(not yet done, per the original build-status notes).

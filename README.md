@@ -19,7 +19,8 @@ disputes.
 ```
 contracts/    Crossbench Intelligent Contract + direct/integration tests
 backend/      Cloudflare Workers API (Hono) - SIWE auth, D1 index, indexer
-frontend/     Next.js app - Reown AppKit wallet connect, DESIGN.md tokens
+frontend/     Next.js app - Reown AppKit wallet connect, "Lex Cryptographica" theme
+docs/         CONTRACT_SPEC.md - full method/state reference for the contract
 ```
 
 ## Live deployments
@@ -29,25 +30,30 @@ frontend/     Next.js app - Reown AppKit wallet connect, DESIGN.md tokens
 - Intelligent Contract (StudioNet): `0x6F1CeE0a07953EC2EE18b4d9DE36aB010Abc10d2` - see `CONTRACT_DEPLOYMENT.md` for how to redeploy and rewire your own instance
 
 See `ARCHITECTURE.md` for the full system design and trust-boundary
-rationale, `MEMORY.md` for build status and everything learned along the
-way (**read this first** in a new session - it documents three real bugs
-found via real-network testing, not just lint), and
-`CONTRACT_DEPLOYMENT.md` for deploying the contract yourself and wiring the
-address in.
+rationale, `docs/CONTRACT_SPEC.md` for the contract's full method/state
+spec, `MEMORY.md` for build status and everything learned along the way
+(**read this first** in a new session - it documents multiple real bugs
+found via real-network and real-wallet testing, not just lint), and
+`CONTRACT_DEPLOYMENT.md` for redeploying the contract and rewiring the
+address.
 
 ## Discovery questionnaire - answers on record
 
 | Question | Answer |
 |---|---|
 | Backend stack | Cloudflare Workers + D1 (no Fly, no Postgres - migrated mid-build at explicit instruction) |
-| Authentication | External wallet connect (Reown AppKit: MetaMask/Rainbow/Zerion) + SIWE. Wallet-connected alone is never authentication. |
+| Authentication | External wallet connect (Reown AppKit - surfaces MetaMask, WalletConnect, Trust Wallet, Binance Wallet, SafePal, and 80+ more) + SIWE. Wallet-connected alone is never authentication. |
 | Dispute scope (v1) | Narrow: moderation-appeal reference case, contract stays generic |
-| Evidence bundle cap | 3 items per party, web pages + on-chain references only |
+| Evidence bundle cap | 3 items per party (2 more for challenge evidence), web pages + on-chain references only |
 | Counter-stake | Required to proceed; claimant wins by default on timeout otherwise |
-| Challenge window | Fixed 48 hours, additive evidence only |
-| Contract deployment | User deploys via GenLayer Studio/CLI - not automated here |
+| Challenge window | Fixed 48 hours, additive evidence only - originals are immutable |
+| Contract deployment | Claude deploys directly via the `genlayer` CLI, per explicit user instruction ("deploy the address yourself") - see `CONTRACT_DEPLOYMENT.md` |
 | Frontend host | Vercel |
 | Backend host | Cloudflare Workers |
+| RPC budget | StudioNet caps this account at 500 requests/hour; the backend enforces a 450/hour ceiling (Upstash Redis, D1 fallback) with margin for retries |
+
+See `docs/CONTRACT_SPEC.md` for the full method/state spec of the
+Intelligent Contract.
 
 ## Quick start (local dev)
 
@@ -59,6 +65,31 @@ pytest contracts/tests/direct/ -q
 # Backend
 cd backend && npm install && npx wrangler dev
 
-# Frontend
+# Frontend - see frontend/README.md if you hit a Node version issue
+# (the repo's .claude/launch.json / scripts/dev-frontend.sh already
+# work around an nvm-vs-Homebrew Node conflict seen in this environment)
 cd frontend && npm install && npm run dev
 ```
+
+### Environment variables
+
+**Backend** (`backend/wrangler.toml` for public vars, `wrangler secret put`
+for the rest):
+
+| Variable | Purpose |
+|---|---|
+| `CONTRACT_ADDRESS` (secret) | Deployed Intelligent Contract address. Unset until deployed - `isContractConfigured()` gates all contract-touching routes. |
+| `GENLAYER_NETWORK`, `GENLAYER_RPC_URL` | StudioNet network/RPC endpoint |
+| `GENLAYER_RPC_MAX_REQUESTS_PER_HOUR` | Read-side RPC budget ceiling (currently `450`) |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` (secrets) | Upstash Redis REST credentials for the RPC budget counter (D1 is the fallback if unset) |
+| `JWT_SECRET` (secret) | Signs SIWE session access/refresh tokens |
+| `INTERNAL_SECRET` (secret) | Protects `POST /internal/reindex`, the manual indexer-refresh escape hatch |
+
+**Frontend** (`frontend/.env.local` locally, Vercel env vars in prod):
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_CONTRACT_ADDRESS` | Deployed Intelligent Contract address |
+| `NEXT_PUBLIC_API_URL` | Backend Worker URL (defaults to `http://localhost:8787`) |
+| `NEXT_PUBLIC_REOWN_PROJECT_ID` | Reown/WalletConnect project ID for wallet connect |
+| `NEXT_PUBLIC_APP_URL` | Canonical frontend URL, used in wallet-connect metadata |
