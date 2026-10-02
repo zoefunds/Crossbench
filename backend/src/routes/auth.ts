@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import { z } from "zod";
 import { SiweMessage, generateNonce } from "siwe";
-import jwt from "@tsndr/cloudflare-worker-jwt";
+import jwt from "jsonwebtoken";
 import type { Env } from "../lib/env.js";
 
 // Wallet-connected alone is never authentication. This SIWE flow is the
@@ -65,10 +65,7 @@ authRoutes.post("/auth/verify", async (c) => {
     .bind(await sha256Hex(refreshToken), address, now, refreshExpiresAt)
     .run();
 
-  const accessToken = await jwt.sign(
-    { sub: address, exp: Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL_SECONDS },
-    c.env.JWT_SECRET,
-  );
+  const accessToken = jwt.sign({ sub: address }, c.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_TTL_SECONDS });
 
   setCookie(c, "refresh_token", refreshToken, {
     httpOnly: true,

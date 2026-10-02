@@ -8,7 +8,7 @@ import { requireAuth } from "../middleware/auth.js";
 // OAuth providers (client id/secret) are wired in per ARCHITECTURE.md's
 // "launch narrow, generalize after" decision - `PROVIDERS` below is where
 // each one gets registered once its app credentials exist as Worker
-// secrets (`wrangler secret put <PROVIDER>_CLIENT_SECRET`).
+// environment secrets.
 interface ProviderConfig {
   authorizeUrl: string;
   tokenUrl: string;

@@ -2,6 +2,7 @@
 node_modules/
 .next/
 out/
+backend/dist/
 
 # Python
 __pycache__/

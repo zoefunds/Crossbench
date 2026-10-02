@@ -7,7 +7,7 @@ when a (re)deploy is needed, then wires the resulting address into the
 backend and frontend config itself. This doc describes that actual
 workflow, not the original user-deploys default.
 
-**Current live address (StudioNet):** `0x6F1CeE0a07953EC2EE18b4d9DE36aB010Abc10d2`
+**Current live address (StudioNet):** `0xE8820FB49D6b2e5984Bc8F70762bbB659FbA221c`
 (also recorded in `README.md`). Runner: `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`.
 
 Redeploy whenever the contract source changes in a way that needs a fresh
@@ -39,11 +39,11 @@ pytest contracts/tests/direct/ -q
 
 ## 2. Wire the deployed address in
 
-### Backend (Cloudflare Worker)
+### Backend (Fly.io)
 
 ```bash
 cd backend
-npx wrangler secret put CONTRACT_ADDRESS
+fly secrets set CONTRACT_ADDRESS=0xYourContractAddress
 # paste the deployed address when prompted
 ```
 
@@ -67,7 +67,7 @@ vercel alias set <new-deployment-url> crossbench-app.vercel.app
 ## 3. Verify the wiring
 
 ```bash
-curl https://<your-worker>.workers.dev/stats
+curl https://<your-fly-app>.fly.dev/stats
 ```
 
 Should return real contract stats (`total_disputes`, `accounting_balanced`,

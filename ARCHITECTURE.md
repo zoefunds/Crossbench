@@ -35,40 +35,29 @@ and weigh both sides' evidence without an incentive to favor one side.
 
 ### 1. Intelligent Contract (`contracts/crossbench_contract.py`)
 Single contract, GenLayer StudioNet, GEN as stake token. Currently deployed
-at `0x6F1CeE0a07953EC2EE18b4d9DE36aB010Abc10d2` (see `README.md` for the
+at `0xE8820FB49D6b2e5984Bc8F70762bbB659FbA221c` (see `README.md` for the
 live address, `CONTRACT_DEPLOYMENT.md` for redeploying, `docs/CONTRACT_SPEC.md`
 for the full method/state spec). Built with the `genlayer-dev:write-contract`
 skill, validated with `genvm-lint`, tested with both direct (mocked,
 fast) and integration (real consensus) modes via `gltest`.
 
-### 2. Backend (`backend/`) — Cloudflare Workers + D1
+### 2. Backend (`backend/`) — Fly.io Node/Hono + PostgreSQL
 
-**Superseded 2026-09-23**: originally specified as Node/Fastify on Fly.io
-with self-run Postgres. User instruction: "we are shifting the backend
-from Fly to Cloudflare completely." Now: Cloudflare Workers (TypeScript)
-for the API, Cloudflare D1 (SQLite-based, edge-replicated) for storage —
-no Fly, no Postgres, no separately-hosted server process anywhere.
+The backend runs as a Node/Hono service on Fly.io. PostgreSQL stores the
+indexed contract mirror, sessions, rate-limit counters, and expiring nonce /
+OAuth state records. The contract remains the source of truth for money and
+verdict decisions.
 
 Responsibilities (unchanged in substance, only the runtime changed):
 - **Never** weighs evidence or makes the verdict decision — read-only indexer over contract state plus auth/session plumbing. Every write (`create_dispute`, `accept_dispute`, `submit_evidence`, `submit_challenge_evidence`, `finalize_dispute`, `withdraw_credit`, ...) is a direct client-side transaction from the frontend, signed by the user's own wallet straight to the Intelligent Contract - the backend never sees or brokers a write.
-- SIWE-style wallet auth (sign a server-issued nonce/challenge; connecting a wallet alone is never authentication). Nonces live in Workers KV (short TTL), sessions are JWT access/refresh tokens.
-- D1 — indexed dispute/evidence/verdict history for fast reads, endpoint-abuse rate-limit counters, session storage. `GET /disputes` and `GET /disputes/:id` are **read-through**: they hit the contract live first and upsert into D1 as a cache side-effect, falling back to the D1 mirror only if the live read itself fails - a user never has to wait on the Cron Trigger to see their own just-submitted action reflected.
-- A Cloudflare Workers Cron Trigger (every 2 minutes) additionally polls contract state via the GenLayer SDK and mirrors it into D1 as a background convenience; a manual `POST /internal/reindex` (protected by an `X-Internal-Secret` header) exists as an operational escape hatch if the cron ever falls behind. The contract remains the source of truth in all cases.
-- Two separate rate limits, for two separate things: (1) endpoint-abuse limiting on backend routes is a D1-backed fixed-window counter keyed by client IP (`backend/src/middleware/rateLimit.ts`) - no Redis involved; (2) the GenLayer StudioNet RPC budget (this account is capped at 500 requests/hour by GenLayer) is tracked with Upstash Redis REST (`@upstash/redis/cloudflare`, atomic `INCR`), with D1 as a fallback counter if Redis is unavailable - see `backend/src/lib/genlayer-client.ts`'s `checkRpcBudget`. This budget only covers backend-side **reads**; wallet writes go straight from the browser to the chain and are subject to StudioNet's own RPC-level throttling instead, which the frontend retries with backoff (see the frontend section below).
+- SIWE-style wallet auth (sign a server-issued nonce/challenge; connecting a wallet alone is never authentication). Nonces and OAuth state live in PostgreSQL with expiry timestamps; sessions are JWT access/refresh tokens.
+- PostgreSQL stores indexed dispute/evidence/verdict history, endpoint-abuse rate-limit counters, and session data. `GET /disputes` and `GET /disputes/:id` are read-through and fall back to the indexed mirror if the live read fails.
+- A process scheduler polls contract state every two minutes. A manual `POST /internal/reindex` protected by `X-Internal-Secret` remains available as an operational escape hatch.
+- The GenLayer StudioNet RPC budget is tracked with Upstash Redis when configured, with PostgreSQL as a fallback. This budget covers backend-side reads only; wallet writes go directly from the browser to the contract.
 
-**Why this is actually a better fit for the "must never die" requirement**:
-Workers are edge/serverless — there is no long-lived process that can
-crash and need an auto-restart the way a Fly machine can. Cloudflare's
-network runs the Worker per-request across its edge; the 24/7 guarantee
-comes from Cloudflare's platform SLA rather than from an app-level health
-check/restart loop. D1 is Cloudflare-managed and edge-replicated, so there
-is no separate database uptime story to manage either.
-
-Trade-off to be explicit about: D1 is SQLite, not Postgres — the schema
-(disputes, evidence_items, verdicts, users, social_connections, plus
-auth/rate-limit tables) is designed to fit SQLite's simpler type system and
-single-writer-per-shard model, which is a fine fit here since this backend
-is a read-mostly index, never the source of truth for money movement.
+Fly is configured with a permanently running machine, HTTPS, health checks,
+and automatic machine restart behavior. PostgreSQL is external to the app
+machine so application restarts do not affect persisted data.
 
 ### 3. Frontend (`frontend/`)
 Next.js 16 (App Router, Turbopack), wagmi v2 + viem, Reown AppKit for
@@ -116,7 +105,7 @@ Stake and settlement are actual GEN transfers on GenLayer StudioNet:
 - Settlement calls `_send_gen` (an `@gl.evm.contract_interface` emission stub) from the deterministic settlement function only — never from the nondeterministic validator path.
 - Frontend tracks the real transaction lifecycle via the GenLayer SDK (submitted → accepted by consensus → executed → state updated), never a client-side timer or string-matched RPC field.
 
-## Data model (Cloudflare D1 / SQLite — indexed mirror of contract state)
+## Data model (PostgreSQL — indexed mirror of contract state)
 
 `disputes`, `evidence_items` (both original and additive-challenge items,
 distinguished by an `is_challenge` flag - there's no separate challenges
@@ -142,17 +131,17 @@ narrow, generalize after" decision).
 
 - SSRF protection on the contract's evidence fetch (allow-list URL schemes, reject internal/private IP ranges, size caps).
 - XSS: all evidence content rendered as text/sanitized in the frontend, never `dangerouslySetInnerHTML` on fetched content.
-- Endpoint-abuse rate limiting on backend routes (D1-backed fixed-window counter, keyed by client IP) to blunt spam-dispute and bundle-flooding abuse. Separately, GenLayer RPC reads are budget-guarded via Upstash Redis (D1 fallback) to stay under StudioNet's own 500-requests/hour ceiling for this account - see the backend section above.
+- Endpoint-abuse rate limiting on backend routes (PostgreSQL-backed fixed-window counter, keyed by client IP) to blunt spam-dispute and bundle-flooding abuse. Separately, GenLayer RPC reads are budget-guarded via Upstash Redis (PostgreSQL fallback).
 - No private keys ever touch the backend — wallet-based auth only, all signing happens client-side in the user's wallet.
-- Secrets via `wrangler secret put` (backend) / Vercel env vars (frontend), never committed. Sessions are short-lived JWT access tokens (15 min) with a longer-lived refresh token, per `backend/src/routes/auth.ts`.
+- Secrets via Fly secrets (backend) / Vercel env vars (frontend), never committed. Sessions are short-lived JWT access tokens (15 min) with a longer-lived refresh token.
 
 ## Deployment
 
 - Contract: Claude deploys directly via the `genlayer` CLI (`genlayer deploy contracts/crossbench_contract.py --network studionet`), per explicit user instruction ("deploy the address yourself") - this overrides the project's earlier default of the user deploying it themselves. Once deployed, the address is wired into the Worker's `CONTRACT_ADDRESS` secret and the frontend's `NEXT_PUBLIC_CONTRACT_ADDRESS` env var. See `CONTRACT_DEPLOYMENT.md` for the exact redeploy/rewire steps and the current live address.
-- Backend + D1: Cloudflare, via `wrangler deploy`. `wrangler.toml` binds the D1 database, the `NONCES` KV namespace, and the Cron Trigger.
+- Backend + PostgreSQL: Fly.io, via `fly deploy`; see `backend/fly.toml` and `backend/FLY_MIGRATION.md`.
 - Frontend: Vercel, via `vercel deploy --prod` followed by `vercel alias set <deployment-url> crossbench-app.vercel.app` to repoint the canonical alias (Vercel does not do this automatically on promote).
 
 ## Why not the other options
 
-- Firebase/Supabase were available but a self-controlled relational schema was chosen for full control over the escrow/dispute schema and to avoid vendor lock-in on a financial-value application; that later became Cloudflare D1 specifically at the user's explicit instruction to move the entire backend off Fly onto Cloudflare.
+- Firebase/Supabase were available but a self-controlled relational schema was chosen for full control over the escrow/dispute schema and to avoid vendor lock-in on a financial-value application.
 - Wallet-based auth (not email+password+custodial wallet) was chosen to avoid the private-key-custody security surface entirely — the application never holds a key that can move user funds.

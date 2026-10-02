@@ -18,6 +18,15 @@ import { pollOnce, upsertDispute, type DisputeDict } from "../indexer/poll.js";
 // network error) - a user should never have to wait for a scheduled job to
 // see their own just-submitted action reflected.
 export const disputeRoutes = new Hono<{ Bindings: Env }>();
+const LIVE_REFRESH_MS = 30_000;
+const lastLiveRefresh = new Map<string, number>();
+function canRefreshLive(id: string): boolean {
+  const now = Date.now();
+  const previous = lastLiveRefresh.get(id) ?? 0;
+  if (now - previous < LIVE_REFRESH_MS) return false;
+  lastLiveRefresh.set(id, now);
+  return true;
+}
 
 disputeRoutes.get("/disputes", async (c) => {
   const offset = Number(c.req.query("offset") ?? "0");
@@ -45,7 +54,7 @@ disputeRoutes.get("/disputes", async (c) => {
 disputeRoutes.get("/disputes/:id", async (c) => {
   const id = c.req.param("id");
 
-  if (isContractConfigured(c.env)) {
+  if (isContractConfigured(c.env) && canRefreshLive(id)) {
     try {
       const live = await readContract<DisputeDict>(c.env, "get_dispute", [id]);
       await upsertDispute(c.env.DB, live);

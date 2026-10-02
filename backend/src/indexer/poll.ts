@@ -1,6 +1,7 @@
 import type { Env } from "../lib/env.js";
 import { isContractConfigured } from "../lib/env.js";
 import { readContract } from "../lib/genlayer-client.js";
+import type { Database } from "../lib/db.js";
 
 export interface DisputeDict {
   id: string;
@@ -27,8 +28,18 @@ export interface DisputeDict {
 }
 
 const TERMINAL_STATUSES = new Set(["SETTLED", "CANCELLED", "DEFAULTED_NO_RESPONSE"]);
+let lastPollAt = 0;
+let pollInFlight: Promise<void> | null = null;
 
-export async function upsertDispute(db: D1Database, d: DisputeDict) {
+export async function pollOnce(env: Env): Promise<void> {
+  if (pollInFlight) return pollInFlight;
+  if (Date.now() - lastPollAt < 30_000) return;
+  lastPollAt = Date.now();
+  pollInFlight = pollOnceInternal(env).finally(() => { pollInFlight = null; });
+  return pollInFlight;
+}
+
+export async function upsertDispute(db: Database, d: DisputeDict) {
   const now = new Date().toISOString();
   await db.prepare(
     `INSERT INTO disputes (
@@ -76,7 +87,7 @@ export async function upsertDispute(db: D1Database, d: DisputeDict) {
   }
 }
 
-export async function pollOnce(env: Env): Promise<void> {
+async function pollOnceInternal(env: Env): Promise<void> {
   if (!isContractConfigured(env)) return;
 
   const stats = await readContract<{ total_disputes: string }>(env, "get_stats", []);

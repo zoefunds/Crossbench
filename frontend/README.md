@@ -8,7 +8,7 @@ frontend.
 Every write (create dispute, accept, submit evidence, submit challenge
 evidence, finalize, withdraw) is a direct client-side transaction signed
 by the user's own connected wallet straight to the Intelligent Contract.
-This app never brokers a write - the Cloudflare Workers backend
+This app never brokers a write - the Fly.io backend
 (`../backend/`) is a read-only index for fast list/detail views, with a
 read-through fallback to a live contract read.
 
@@ -51,8 +51,8 @@ Copy into `frontend/.env.local` for local dev (see root `README.md` for
 the same table with descriptions):
 
 ```
-NEXT_PUBLIC_CONTRACT_ADDRESS=0x6F1CeE0a07953EC2EE18b4d9DE36aB010Abc10d2
-NEXT_PUBLIC_API_URL=http://localhost:8787
+NEXT_PUBLIC_CONTRACT_ADDRESS=0xE8820FB49D6b2e5984Bc8F70762bbB659FbA221c
+NEXT_PUBLIC_API_URL=http://localhost:8080
 NEXT_PUBLIC_REOWN_PROJECT_ID=<your Reown/WalletConnect project id>
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```

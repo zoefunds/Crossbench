@@ -18,7 +18,7 @@ disputes.
 
 ```
 contracts/    Crossbench Intelligent Contract + direct/integration tests
-backend/      Cloudflare Workers API (Hono) - SIWE auth, D1 index, indexer
+backend/      Fly.io Node API (Hono) - SIWE auth, PostgreSQL index, indexer
 frontend/     Next.js app - Reown AppKit wallet connect, "Lex Cryptographica" theme
 docs/         CONTRACT_SPEC.md - full method/state reference for the contract
 ```
@@ -26,8 +26,8 @@ docs/         CONTRACT_SPEC.md - full method/state reference for the contract
 ## Live deployments
 
 - Frontend: https://crossbench-app.vercel.app
-- Backend API: https://crossbench-api.preciousmofeoluwa.workers.dev
-- Intelligent Contract (StudioNet): `0x6F1CeE0a07953EC2EE18b4d9DE36aB010Abc10d2` - see `CONTRACT_DEPLOYMENT.md` for how to redeploy and rewire your own instance
+- Backend API: Fly.io deployment (hostname is assigned during `fly launch`)
+- Intelligent Contract (StudioNet): `0xE8820FB49D6b2e5984Bc8F70762bbB659FbA221c` - see `CONTRACT_DEPLOYMENT.md` for how to redeploy and rewire your own instance
 
 See `ARCHITECTURE.md` for the full system design and trust-boundary
 rationale, `docs/CONTRACT_SPEC.md` for the contract's full method/state
@@ -41,7 +41,7 @@ address.
 
 | Question | Answer |
 |---|---|
-| Backend stack | Cloudflare Workers + D1 (no Fly, no Postgres - migrated mid-build at explicit instruction) |
+| Backend stack | Node/Hono on Fly.io + PostgreSQL |
 | Authentication | External wallet connect (Reown AppKit - surfaces MetaMask, WalletConnect, Trust Wallet, Binance Wallet, SafePal, and 80+ more) + SIWE. Wallet-connected alone is never authentication. |
 | Dispute scope (v1) | Narrow: moderation-appeal reference case, contract stays generic |
 | Evidence bundle cap | 3 items per party (2 more for challenge evidence), web pages + on-chain references only |
@@ -49,8 +49,8 @@ address.
 | Challenge window | Fixed 48 hours, additive evidence only - originals are immutable |
 | Contract deployment | Claude deploys directly via the `genlayer` CLI, per explicit user instruction ("deploy the address yourself") - see `CONTRACT_DEPLOYMENT.md` |
 | Frontend host | Vercel |
-| Backend host | Cloudflare Workers |
-| RPC budget | StudioNet caps this account at 500 requests/hour; the backend enforces a 450/hour ceiling (Upstash Redis, D1 fallback) with margin for retries |
+| Backend host | Fly.io |
+| RPC budget | Backend enforces a 4,000-request daily ceiling, with coalesced 30-second polling and cached detail reads |
 
 See `docs/CONTRACT_SPEC.md` for the full method/state spec of the
 Intelligent Contract.
@@ -63,7 +63,7 @@ genvm-lint check contracts/crossbench_contract.py --json
 pytest contracts/tests/direct/ -q
 
 # Backend
-cd backend && npm install && npx wrangler dev
+cd backend && npm install && npm run dev
 
 # Frontend - see frontend/README.md if you hit a Node version issue
 # (the repo's .claude/launch.json / scripts/dev-frontend.sh already
@@ -73,15 +73,15 @@ cd frontend && npm install && npm run dev
 
 ### Environment variables
 
-**Backend** (`backend/wrangler.toml` for public vars, `wrangler secret put`
+**Backend** (Fly secrets for production, `.env` for local development)
 for the rest):
 
 | Variable | Purpose |
 |---|---|
 | `CONTRACT_ADDRESS` (secret) | Deployed Intelligent Contract address. Unset until deployed - `isContractConfigured()` gates all contract-touching routes. |
 | `GENLAYER_NETWORK`, `GENLAYER_RPC_URL` | StudioNet network/RPC endpoint |
-| `GENLAYER_RPC_MAX_REQUESTS_PER_HOUR` | Read-side RPC budget ceiling (currently `450`) |
-| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` (secrets) | Upstash Redis REST credentials for the RPC budget counter (D1 is the fallback if unset) |
+| `GENLAYER_RPC_MAX_REQUESTS_PER_DAY` | Read-side RPC budget ceiling (currently `4000`, below the 5000/day quota) |
+| `DATABASE_URL` | PostgreSQL connection string |
 | `JWT_SECRET` (secret) | Signs SIWE session access/refresh tokens |
 | `INTERNAL_SECRET` (secret) | Protects `POST /internal/reindex`, the manual indexer-refresh escape hatch |
 
@@ -90,6 +90,6 @@ for the rest):
 | Variable | Purpose |
 |---|---|
 | `NEXT_PUBLIC_CONTRACT_ADDRESS` | Deployed Intelligent Contract address |
-| `NEXT_PUBLIC_API_URL` | Backend Worker URL (defaults to `http://localhost:8787`) |
+| `NEXT_PUBLIC_API_URL` | Fly backend URL (defaults to `https://crossbench-api.fly.dev`) |
 | `NEXT_PUBLIC_REOWN_PROJECT_ID` | Reown/WalletConnect project ID for wallet connect |
 | `NEXT_PUBLIC_APP_URL` | Canonical frontend URL, used in wallet-connect metadata |

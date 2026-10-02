@@ -4,7 +4,7 @@ Source: `contracts/crossbench_contract.py`. This is a reference, not a copy
 - when in doubt, the contract source is authoritative; re-derive this doc
 from it rather than trusting it blindly if the two ever disagree.
 
-Current live deployment (StudioNet): `0x6F1CeE0a07953EC2EE18b4d9DE36aB010Abc10d2`
+Current live deployment (StudioNet): `0xE8820FB49D6b2e5984Bc8F70762bbB659FbA221c`
 (see `README.md` / `CONTRACT_DEPLOYMENT.md`). Runner:
 `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`.
 

@@ -1,13 +1,10 @@
 import type { Context, Next } from "hono";
 import type { Env } from "../lib/env.js";
 
-// D1-backed fixed-window rate limit, keyed by client IP + route. No Redis
-// in this stack (Cloudflare-only per project decision) - D1 is cheap
-// enough for this and avoids adding a KV write to the hot path beyond the
-// nonce store auth.ts already uses.
+// PostgreSQL-backed fixed-window rate limit, keyed by client IP + route.
 export function rateLimit(bucket: string, maxRequests: number, windowSeconds: number) {
   return async (c: Context<{ Bindings: Env }>, next: Next) => {
-    const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+    const ip = c.req.header("fly-client-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
     const key = `${bucket}:${ip}`;
     const nowSeconds = Math.floor(Date.now() / 1000);
     const windowStart = nowSeconds - (nowSeconds % windowSeconds);
