@@ -42,6 +42,20 @@ def test_create_dispute_rejects_ssrf_targets(direct_vm, direct_deploy, direct_al
     bad = json.dumps([{"kind": "WEB_PAGE", "location": "https://169.254.169.254/latest/meta-data", "description": "an internal metadata endpoint"}])
     with direct_vm.expect_revert("private or internal host"):
         contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", "https://x.example.com/policy", bad)
+    for location in ("https://172.16.0.1/private", "https://[::1]/private", "https://public.example@169.254.169.254/private"):
+        direct_vm.value = STAKE
+        bad = json.dumps([{"kind": "WEB_PAGE", "location": location, "description": "an internal network target"}])
+        with direct_vm.expect_revert("private or internal host"):
+            contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", "https://x.example.com/policy", bad)
+
+
+def test_onchain_reference_must_be_independently_fetchable_https(direct_vm, direct_deploy, direct_alice):
+    contract = direct_deploy(CONTRACT)
+    direct_vm.sender = direct_alice
+    direct_vm.value = STAKE
+    opaque = json.dumps([{"kind": "ONCHAIN_REF", "location": "ethereum:0x1234", "description": "opaque chain reference"}])
+    with direct_vm.expect_revert("must use https"):
+        contract.create_dispute("x" * 50, "FACTUAL_ACCOUNT_DISPUTE", "https://x.example.com/policy", opaque)
 
 
 def test_accept_dispute_requires_exact_counter_stake(direct_vm, direct_deploy, direct_alice, direct_bob):
@@ -144,6 +158,9 @@ def test_inconclusive_splits_refund_evenly(direct_vm, direct_deploy, direct_alic
     contract.trigger_evaluation(dispute_id)
     dispute = contract.get_dispute(dispute_id)
     assert dispute["preliminary_verdict"]["verdict_code"] == "INCONCLUSIVE"
+    assert contract.get_stats()["inconclusive"] == "0"
+    contract._settle(contract._dispute(dispute_id), dispute["preliminary_verdict"])
+    assert contract.get_stats()["inconclusive"] == "1"
 
 
 def test_unreachable_items_forced_neither(direct_vm, direct_deploy, direct_alice, direct_bob):

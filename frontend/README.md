@@ -1,124 +1,93 @@
 # Crossbench frontend
 
-Next.js 16 (App Router, Turbopack) app for Crossbench, a stake-backed
-dispute resolution protocol on GenLayer. See the repo root `README.md` and
-`ARCHITECTURE.md` for the full system picture - this file only covers the
-frontend.
-
-Every write (create dispute, accept, submit evidence, submit challenge
-evidence, finalize, withdraw) is a direct client-side transaction signed
-by the user's own connected wallet straight to the Intelligent Contract.
-This app never brokers a write - the Fly.io backend
-(`../backend/`) is a read-only index for fast list/detail views, with a
-read-through fallback to a live contract read.
+Production: <https://crossbench-app.vercel.app/>. This is the only supported
+frontend URL. Generated Vercel project aliases must be removed after deployment.
 
 ## Stack
 
-- **Next.js 16**, App Router, Turbopack
-- **wagmi v2 + viem** for wallet/chain plumbing
-- **Reown AppKit** (`@reown/appkit`) for the wallet-connect UI, wired to
-  `genlayer-js`'s own `studionet` chain object (`genlayer-js/chains`) -
-  not a hand-rolled one. A partial chain definition (missing GenLayer-
-  specific fields like `consensusMainContract`) causes a real
-  `Cannot convert undefined to a BigInt` crash on wallet writes; this was
-  hit and fixed once already, see `../MEMORY.md`.
-- **genlayer-js** for reading/writing the Intelligent Contract
-- **Tailwind CSS v4** (CSS-based theme via `app/globals.css`'s
-  `@theme inline` block - there is no `tailwind.config.js`)
+- Next.js `16.3.6`, React `19.2.8`
+- wagmi `3.7.7`, viem `2.56.8`, Reown AppKit `1.8.24`
+- `genlayer-js` `1.1.8`
+- Tailwind CSS 4
 
-## Local dev
+There is no OAuth/social login. Reown only connects wallets; SIWE authentication
+is a separate signed-message flow to Fly.
 
-The dev server needs the Homebrew Node install, not whatever `nvm` sets as
-default in this environment (a prior version mismatch broke `next dev`
-silently). Two equivalent ways to run it:
+## Trust boundary and writes
 
-```bash
-# via the repo's launch config (what the built-in browser preview tool uses)
-# see ../.claude/launch.json -> scripts/dev-frontend.sh
+All protocol writes are direct wallet-signed contract transactions. The backend
+only authenticates, serves indexed/live reads, and stores telemetry. `lib/tx.ts`
+does not report success at `ACCEPTED`: it waits for `FINALIZED`, checks the leader
+execution receipt, disables the action, then forces a live read.
 
-# or directly:
-cd frontend
-npm install
-../scripts/dev-frontend.sh   # forces Homebrew's node onto PATH first
+Pass `connector.getProvider()` (raw EIP-1193) to GenLayer. Do not substitute
+wagmi's wrapped viem transport. Use the complete `studionet` chain export from
+`genlayer-js/chains`, including consensus-specific fields.
+
+## Key files
+
+```text
+app/disputes/page.tsx                     list + countdowns
+app/disputes/new/page.tsx                 create/stake + autofill
+app/disputes/[id]/page.tsx                live detail/polling
+app/disputes/[id]/DisputeActions.tsx      all party contract actions
+app/disputes/[id]/EvidenceAssessment.tsx  consensus and explanation labels
+app/profile/page.tsx                      wallet disputes/deadlines
+app/settings/page.tsx                     SIWE session only
+components/DeadlineCountdown.tsx          one-second deadlines
+components/EvidenceBundleEditor.tsx       contract-aligned URL/text validation
+lib/api.ts                                read-through calls + forced refresh
+lib/auth.ts                               SIWE and access-token refresh
+lib/exampleData.ts                        valid fictional demonstrations
+lib/genlayer.ts                           wallet-backed GenLayer client
+lib/operations.ts                         non-blocking telemetry
+lib/tx.ts                                 finalized-only write flow
 ```
 
-Plain `npm run dev` works too as long as your shell's default `node` is
-already the Homebrew one.
+Autofill public pages provide context but do not prove fictional events; an
+`INCONCLUSIVE` result is valid.
 
-## Environment variables
+## Environment
 
-Copy into `frontend/.env.local` for local dev (see root `README.md` for
-the same table with descriptions):
-
-```
-NEXT_PUBLIC_CONTRACT_ADDRESS=0xE8820FB49D6b2e5984Bc8F70762bbB659FbA221c
+```dotenv
+NEXT_PUBLIC_CONTRACT_ADDRESS=0x44a98ec678A32aCc7024Db2B6242db62b509E8cA
 NEXT_PUBLIC_API_URL=http://localhost:8080
-NEXT_PUBLIC_REOWN_PROJECT_ID=<your Reown/WalletConnect project id>
+NEXT_PUBLIC_GENLAYER_CHAIN_ID=61999
+NEXT_PUBLIC_GENLAYER_RPC_URL=https://studio.genlayer.com/api
+NEXT_PUBLIC_REOWN_PROJECT_ID=<project-id>
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-`NEXT_PUBLIC_*` vars are inlined at **build time**, not read at runtime -
-changing one in the Vercel dashboard does nothing to an already-built
-deployment. Redeploy after changing them (see `../CONTRACT_DEPLOYMENT.md`).
+Production values use the HTTPS URLs in the root README. Public values are
+inlined at build time, so every change requires redeployment.
 
-## Structure
+## Verify
 
-```
-app/
-  page.tsx                    Landing page
-  layout.tsx                  Root layout, fonts (Hanken Grotesk + JetBrains Mono), NavBar mount
-  globals.css                 Full design-token theme (colors, type scale, spacing) - see below
-  disputes/page.tsx           Dispute list (read-through from the backend)
-  disputes/new/page.tsx       Dispute creation form + wallet write
-  disputes/[id]/page.tsx      Dispute detail (live contract read + polling)
-  disputes/[id]/DisputeActions.tsx      All party actions (accept, submit evidence, challenge, finalize, withdraw)
-  disputes/[id]/EvidenceAssessment.tsx  Per-item validator assessment display
-  profile/page.tsx            Caller's own disputes + withdrawable credit
-  settings/page.tsx           SIWE session + social-connection management
-components/
-  NavBar.tsx, Logo.tsx, StatusBadge.tsx, WalletConnectButton.tsx,
-  TxStatus.tsx, EvidenceBundleEditor.tsx, Providers.tsx (wagmi/AppKit/React Query setup)
-lib/
-  wagmi.ts       Chain + wagmi adapter config (genlayer-js's studionet chain, not hand-rolled)
-  genlayer.ts    useGenLayerClient() hook - bridges the wallet's raw EIP-1193
-                 provider (connector.getProvider(), not wagmi's wrapped
-                 viem client) into a genlayer-js client
-  tx.ts          runWrite() - real tx lifecycle tracking via the SDK's own
-                 receipt/consensus_data, with retry-with-backoff for
-                 StudioNet's eth_sendRawTransaction rate limiting
-  api.ts         Backend REST client (fetchDisputes, fetchDispute, ...)
-  auth.ts        SIWE session hook
-  exampleData.ts Real example dispute data ("Fill example data" buttons) - not fake/dummy data, a complete moderation-appeal scenario with real reference URLs
+```bash
+cd frontend
+npm ci
+npm test
+npm run typecheck
+npm run lint
+npm run build:webpack
+npm audit --audit-level=low
 ```
 
-## Design system
+Vercel uses the default Turbopack build. The webpack script is a local fallback
+for restricted environments where Turbopack cannot bind an internal worker port.
 
-"Lex Cryptographica" - a dark "Cryptographic Institutionalism" theme
-(obsidian surfaces, electric cyan primary `#4cd7f6`, amber secondary
-`#ffb95f`, Hanken Grotesk for prose, JetBrains Mono for
-hashes/addresses/data). Implemented entirely as CSS custom properties in
-`app/globals.css`'s `@theme inline` block (Tailwind v4's CSS-first theming
-- there's no `tailwind.config.js` to edit). Token *names* are semantic and
-stable (`--color-navy`, `--color-cyan`, `--color-purple`, `--color-text-ec`,
-`--color-text-dim`, `--color-border-ec`, ...) - `purple` is a legacy name
-that now carries the amber "secondary" accent, kept as-is rather than
-renamed across every call site. Utility classes built on those tokens:
-`.glass-card`, `.glass-card-ai`, `.label-sm`, `.data-mono`, `.glow-active`,
-`.glow-stake`.
+## Deploy
 
-A known cosmetic gap: the Reown AppKit *connect modal itself* uses its own
-internal theming (`themeMode`/`themeVariables` passed to `createAppKit()`
-in `Providers.tsx`) which approximates but doesn't exactly match our
-palette - the connect *button* was rebuilt from scratch on the public
-`useAppKit`/`useAppKitAccount` hooks specifically to get pixel-exact
-theming, but the modal Reown renders when you open it is still theirs.
+```bash
+vercel --prod --yes
+vercel alias set <deployment-host> crossbench-app.vercel.app
+vercel alias rm <generated-project-alias> --yes
+curl -fsS -o /dev/null -w '%{http_code}\n' https://crossbench-app.vercel.app/
+```
 
-## Known layout gotchas (already fixed once, don't reintroduce)
+Verify the canonical root and a live dispute page. Any other Crossbench alias is
+a configuration error and must be removed.
 
-- A bare `grid` class with no `grid-cols-N` sizes its implicit track to
-  the unconstrained max-content width of its children, not its container -
-  always pair `grid` with an explicit `grid-cols-N` (or `sm:grid-cols-N`
-  etc.) in this codebase.
-- `truncate` inside a flex row needs `min-w-0` **and** `flex-1` on the
-  truncating element (or an equivalent way to claim the remaining space) -
-  `min-w-0` alone is not sufficient for reliable ellipsis truncation.
+The “Lex Cryptographica” Tailwind 4 theme lives in `app/globals.css`. Reown's
+third-party modal only approximates it. Preserve explicit grid column classes;
+for flex-row truncation, use `min-w-0` plus a remaining-width strategy.

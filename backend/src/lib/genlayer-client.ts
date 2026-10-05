@@ -3,6 +3,7 @@ import type { Address } from "genlayer-js/types";
 import { Redis } from "@upstash/redis";
 import type { Env } from "./env.js";
 import { isContractConfigured } from "./env.js";
+import { recordOperationalEvent } from "./operations.js";
 
 // genlayer-js's `createClient` routes `eth_`-prefixed RPC calls (including
 // the read-only `eth_call` behind `readContract`) through a
@@ -44,10 +45,9 @@ function toPlain(value: unknown): unknown {
 
 // GenLayer StudioNet enforces a hard daily RPC ceiling (5000 req/day). Upstash
 // Redis's atomic INCR gives an exact daily counter across concurrent app
-// read-then-write, which has a race window under concurrency) so the
-// indexer's cron pass and user-triggered reads can never together exceed
-// it. Falls back to a best-effort D1 counter if Redis isn't configured, so
-// this still degrades gracefully rather than hard-failing every read.
+// instances. PostgreSQL uses a single UPSERT ... RETURNING statement, so its
+// fallback is atomic too: indexer polls and user-triggered reads across Fly
+// machines cannot undercount the shared budget.
 let redisClient: Redis | null | undefined;
 
 function getRedis(env: Env): Redis | null {
@@ -58,44 +58,43 @@ function getRedis(env: Env): Redis | null {
   return redisClient;
 }
 
-async function checkRpcBudgetRedis(redis: Redis, limit: number): Promise<void> {
+export async function checkRpcBudgetRedis(env: Env, redis: Pick<Redis, "incr" | "expire">, limit: number): Promise<void> {
   const windowKey = `genlayer_rpc:${Math.floor(Date.now() / 86400000)}`;
   const count = await redis.incr(windowKey);
   if (count === 1) await redis.expire(windowKey, 86400);
   if (count > limit) {
+    await recordOperationalEvent(env, "RPC_BUDGET_EXHAUSTED", `GenLayer RPC daily budget exhausted (${count}/${limit})`, { count, limit, backend: "redis" }).catch(() => undefined);
     throw new Error(`GenLayer RPC daily budget exhausted (${count}/${limit}) - try again after the day rolls over.`);
   }
 }
 
 const RPC_BUDGET_BUCKET = "genlayer_rpc";
 
-async function checkRpcBudgetD1(env: Env, limit: number): Promise<void> {
+export async function checkRpcBudgetDatabase(env: Env, limit: number): Promise<void> {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const windowStart = nowSeconds - (nowSeconds % 86400);
-
   const row = await env.DB.prepare(
-    `SELECT window_started_at, count FROM rate_limit_counters WHERE bucket_key = ?`,
-  ).bind(RPC_BUDGET_BUCKET).first<{ window_started_at: string; count: number }>();
-
-  if (!row || Number(row.window_started_at) !== windowStart) {
-    await env.DB.prepare(
-      `INSERT INTO rate_limit_counters (bucket_key, window_started_at, count) VALUES (?, ?, 1)
-       ON CONFLICT (bucket_key) DO UPDATE SET window_started_at = excluded.window_started_at, count = 1`,
-    ).bind(RPC_BUDGET_BUCKET, String(windowStart)).run();
-    return;
+    `INSERT INTO rate_limit_counters (bucket_key, window_started_at, count) VALUES (?, ?, 1)
+     ON CONFLICT (bucket_key) DO UPDATE SET
+       window_started_at = excluded.window_started_at,
+       count = CASE
+         WHEN rate_limit_counters.window_started_at <> excluded.window_started_at THEN 1
+         ELSE rate_limit_counters.count + 1
+       END
+     RETURNING count`,
+  ).bind(RPC_BUDGET_BUCKET, String(windowStart)).first<{ count: number }>();
+  const count = Number(row?.count ?? limit + 1);
+  if (count > limit) {
+    await recordOperationalEvent(env, "RPC_BUDGET_EXHAUSTED", `GenLayer RPC daily budget exhausted (${count}/${limit})`, { count, limit }).catch(() => undefined);
+    throw new Error(`GenLayer RPC daily budget exhausted (${count}/${limit}) - try again after the day rolls over.`);
   }
-
-  if (row.count >= limit) {
-    throw new Error(`GenLayer RPC daily budget exhausted (${row.count}/${limit}) - try again after the day rolls over.`);
-  }
-  await env.DB.prepare(`UPDATE rate_limit_counters SET count = count + 1 WHERE bucket_key = ?`).bind(RPC_BUDGET_BUCKET).run();
 }
 
 async function checkRpcBudget(env: Env): Promise<void> {
   const limit = Number(env.GENLAYER_RPC_MAX_REQUESTS_PER_DAY ?? 4000);
   const redis = getRedis(env);
-  if (redis) return checkRpcBudgetRedis(redis, limit);
-  return checkRpcBudgetD1(env, limit);
+  if (redis) return checkRpcBudgetRedis(env, redis, limit);
+  return checkRpcBudgetDatabase(env, limit);
 }
 
 export async function readContract<T = unknown>(

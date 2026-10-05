@@ -1,95 +1,143 @@
 # Crossbench
 
-> Both sides submit their proof. Neither side gets to weigh it.
+Crossbench is a stake-backed, two-party dispute protocol on GenLayer StudioNet.
+Each party pins public evidence, independent GenLayer validators fetch and assess
+every source, and the Intelligent Contract deterministically converts the
+consensus result into settlement credits. The application backend cannot create,
+accept, evaluate, settle, or withdraw a dispute.
 
-A general-purpose, stake-backed dispute resolution protocol. Two adversarial
-parties each stake GEN and submit a bundle of precommitted public evidence
-for a specific, falsifiable claim. GenLayer validators - not either party,
-not a moderator, not the platform - independently fetch and assess that
-evidence to reach a structured verdict, and a deterministic function
-distributes the stake accordingly.
+## Production
 
-Flagship reference scenario: platform moderation appeals. The claim format,
-evidence bundles, and verdict structure stay generic enough to also cover
-delivery disputes, listing-accuracy disputes, and other two-party factual
-disputes.
-
-## Repo layout
-
-```
-contracts/    Crossbench Intelligent Contract + direct/integration tests
-backend/      Fly.io Node API (Hono) - SIWE auth, PostgreSQL index, indexer
-frontend/     Next.js app - Reown AppKit wallet connect, "Lex Cryptographica" theme
-docs/         CONTRACT_SPEC.md - full method/state reference for the contract
-```
-
-## Live deployments
-
-- Frontend: https://crossbench-app.vercel.app
-- Backend API: Fly.io deployment (hostname is assigned during `fly launch`)
-- Intelligent Contract (StudioNet): `0xE8820FB49D6b2e5984Bc8F70762bbB659FbA221c` - see `CONTRACT_DEPLOYMENT.md` for how to redeploy and rewire your own instance
-
-See `ARCHITECTURE.md` for the full system design and trust-boundary
-rationale, `docs/CONTRACT_SPEC.md` for the contract's full method/state
-spec, `MEMORY.md` for build status and everything learned along the way
-(**read this first** in a new session - it documents multiple real bugs
-found via real-network and real-wallet testing, not just lint), and
-`CONTRACT_DEPLOYMENT.md` for redeploying the contract and rewiring the
-address.
-
-## Discovery questionnaire - answers on record
-
-| Question | Answer |
+| Component | Production value |
 |---|---|
-| Backend stack | Node/Hono on Fly.io + PostgreSQL |
-| Authentication | External wallet connect (Reown AppKit - surfaces MetaMask, WalletConnect, Trust Wallet, Binance Wallet, SafePal, and 80+ more) + SIWE. Wallet-connected alone is never authentication. |
-| Dispute scope (v1) | Narrow: moderation-appeal reference case, contract stays generic |
-| Evidence bundle cap | 3 items per party (2 more for challenge evidence), web pages + on-chain references only |
-| Counter-stake | Required to proceed; claimant wins by default on timeout otherwise |
-| Challenge window | Fixed 48 hours, additive evidence only - originals are immutable |
-| Contract deployment | Claude deploys directly via the `genlayer` CLI, per explicit user instruction ("deploy the address yourself") - see `CONTRACT_DEPLOYMENT.md` |
-| Frontend host | Vercel |
-| Backend host | Fly.io |
-| RPC budget | Backend enforces a 4,000-request daily ceiling, with coalesced 30-second polling and cached detail reads |
+| Frontend | <https://crossbench-app.vercel.app/> (the only supported frontend URL) |
+| Read-only API | <https://crossbench-api.fly.dev/> |
+| Network | GenLayer StudioNet, chain ID `61999` |
+| Intelligent Contract | `0x44a98ec678A32aCc7024Db2B6242db62b509E8cA` |
+| Deployment transaction | `0x3aeb0ebe64993e369ddb4ed633fa3ecf7e057ab82172785a1bd0a6aceb0ea623` |
+| Contract runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` |
 
-See `docs/CONTRACT_SPEC.md` for the full method/state spec of the
-Intelligent Contract.
+The production contract currently contains the explicitly labelled live
+consensus test dispute `ec-1`. It reached `PRELIMINARY_VERDICT` through real
+validator consensus. Its genuine 48-hour challenge deadline is
+2026-10-07 04:42:50 UTC (05:42:50 Africa/Lagos); final settlement and withdrawal
+must not occur before that contract-enforced deadline.
 
-## Quick start (local dev)
+## Repository
+
+```text
+contracts/  Intelligent Contract and direct/StudioNet integration tests
+backend/    Node 22 + Hono API, PostgreSQL mirror, SIWE sessions, indexer
+frontend/   Next.js 16 UI, wallet connection, direct contract writes
+docs/       Contract specification, audit evidence, lifecycle state, rollback runbook
+```
+
+Authoritative documentation:
+
+- `ARCHITECTURE.md` — components, trust boundaries, data flow, and security.
+- `docs/CONTRACT_SPEC.md` — exact contract methods, limits, lifecycle, and settlement.
+- `CONTRACT_DEPLOYMENT.md` — deploy, cut over, verify, and recover a contract address.
+- `docs/AUDIT_2026-10-05.md` — findings, tests, and real-network evidence.
+- `docs/ROLLBACK_CUTOVER.md` — backend/frontend/contract cutover and rollback.
+- `MEMORY.md` — concise current operational state for the next maintainer.
+
+## Protocol lifecycle
+
+1. The claimant calls `create_dispute` with 0.001–10 GEN and an immutable
+   evidence bundle (one to three items).
+2. A different wallet calls `accept_dispute` before the 24-hour response
+   deadline and counter-stakes exactly the same amount.
+3. The respondent pins one to three evidence items before the 72-hour evidence
+   deadline. The claimant's original bundle was already pinned at creation.
+4. Anyone calls `trigger_evaluation` when both bundles are ready (or after the
+   evidence deadline). Every validator independently fetches every public HTTPS
+   source and assesses support and relevance.
+5. The preliminary verdict opens a 48-hour challenge window. Each party may add
+   up to two immutable evidence items once.
+6. After the deadline, anyone may call `finalize_dispute`. Challenge evidence,
+   if present, causes a new validator assessment; settlement itself is
+   deterministic contract logic.
+7. Each credited party calls `withdraw_credit` from the wallet that owns the
+   credit. The backend never participates in value movement.
+
+## Security and trust boundary
+
+- All state transitions, deadlines, authorization, evidence immutability,
+  validator consensus, payout math, credits, and withdrawals live in the
+  contract.
+- The Fly backend has no signer or private key and only performs contract reads.
+- Evidence must be a public HTTPS URL. Credentials, localhost/`.local`, private,
+  loopback, link-local, reserved, and unspecified literal IPs are rejected.
+  DNS-resolution-time private-address blocking remains the responsibility of the
+  GenLayer web-fetch sandbox.
+- `supports` and payout-critical `relevance` must agree exactly between leader
+  and validators. `reason_code` is leader-authored explanatory context and is
+  explicitly excluded from settlement consensus.
+- The UI reports success only after `FINALIZED` and a successful leader receipt;
+  `ACCEPTED` is informational.
+
+## Local verification
+
+Requirements: Node.js 22+, npm, Python with `gltest`, and the GenLayer tooling
+used by this repository.
 
 ```bash
 # Contract
-genvm-lint check contracts/crossbench_contract.py --json
 pytest contracts/tests/direct/ -q
 
 # Backend
-cd backend && npm install && npm run dev
+cd backend
+npm ci
+npm test
+npm run typecheck
+npm run build
+npm audit --audit-level=low
 
-# Frontend - see frontend/README.md if you hit a Node version issue
-# (the repo's .claude/launch.json / scripts/dev-frontend.sh already
-# work around an nvm-vs-Homebrew Node conflict seen in this environment)
-cd frontend && npm install && npm run dev
+# Frontend
+cd ../frontend
+npm ci
+npm test
+npm run typecheck
+npm run lint
+npm run build:webpack
+npm audit --audit-level=low
 ```
 
-### Environment variables
+Real StudioNet tests cost quota and can take minutes:
 
-**Backend** (Fly secrets for production, `.env` for local development)
-for the rest):
+```bash
+gltest contracts/tests/integration/test_lifecycle.py \
+  -k production_visible_lifecycle --network studionet -s -vv
+```
 
-| Variable | Purpose |
+The deadline-resume test is idempotent and reads the durable files in `docs/`.
+It skips safely until the recorded challenge deadline has passed.
+
+## Runtime configuration
+
+Backend startup fails if a required value is missing or malformed:
+
+| Variable | Meaning |
 |---|---|
-| `CONTRACT_ADDRESS` (secret) | Deployed Intelligent Contract address. Unset until deployed - `isContractConfigured()` gates all contract-touching routes. |
-| `GENLAYER_NETWORK`, `GENLAYER_RPC_URL` | StudioNet network/RPC endpoint |
-| `GENLAYER_RPC_MAX_REQUESTS_PER_DAY` | Read-side RPC budget ceiling (currently `4000`, below the 5000/day quota) |
 | `DATABASE_URL` | PostgreSQL connection string |
-| `JWT_SECRET` (secret) | Signs SIWE session access/refresh tokens |
-| `INTERNAL_SECRET` (secret) | Protects `POST /internal/reindex`, the manual indexer-refresh escape hatch |
+| `JWT_SECRET` | Signs 15-minute SIWE access JWTs; minimum 32 characters |
+| `INTERNAL_SECRET` | Protects internal routes; minimum 24 characters |
+| `CONTRACT_ADDRESS` | Production Intelligent Contract address |
+| `GENLAYER_RPC_URL` | HTTPS StudioNet JSON-RPC endpoint |
+| `GENLAYER_CHAIN_ID` | `61999` |
+| `GENLAYER_RPC_MAX_REQUESTS_PER_DAY` | Backend read budget; production uses `4000` |
+| `APP_ORIGIN` | Exactly `https://crossbench-app.vercel.app` |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Optional Redis budget backend; PostgreSQL is the atomic fallback |
 
-**Frontend** (`frontend/.env.local` locally, Vercel env vars in prod):
+Frontend public build variables:
 
-| Variable | Purpose |
+| Variable | Meaning |
 |---|---|
-| `NEXT_PUBLIC_CONTRACT_ADDRESS` | Deployed Intelligent Contract address |
-| `NEXT_PUBLIC_API_URL` | Fly backend URL (defaults to `https://crossbench-api.fly.dev`) |
-| `NEXT_PUBLIC_REOWN_PROJECT_ID` | Reown/WalletConnect project ID for wallet connect |
-| `NEXT_PUBLIC_APP_URL` | Canonical frontend URL, used in wallet-connect metadata |
+| `NEXT_PUBLIC_CONTRACT_ADDRESS` | Same production address as the backend |
+| `NEXT_PUBLIC_API_URL` | `https://crossbench-api.fly.dev` |
+| `NEXT_PUBLIC_GENLAYER_CHAIN_ID` | `61999` |
+| `NEXT_PUBLIC_GENLAYER_RPC_URL` | Browser-facing StudioNet RPC endpoint |
+| `NEXT_PUBLIC_REOWN_PROJECT_ID` | Reown WalletConnect project identifier |
+| `NEXT_PUBLIC_APP_URL` | `https://crossbench-app.vercel.app` |
+
+No OAuth or social-account linking exists in the current product.

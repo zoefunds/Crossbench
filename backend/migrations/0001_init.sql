@@ -19,15 +19,6 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS social_connections (
-  address TEXT NOT NULL,
-  provider TEXT NOT NULL,
-  provider_account_id TEXT NOT NULL,
-  provider_handle TEXT,
-  connected_at TEXT NOT NULL,
-  PRIMARY KEY (address, provider)
-);
-
 CREATE TABLE IF NOT EXISTS disputes (
   id TEXT PRIMARY KEY,
   claim TEXT NOT NULL,

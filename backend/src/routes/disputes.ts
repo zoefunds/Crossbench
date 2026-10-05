@@ -30,12 +30,15 @@ function canRefreshLive(id: string): boolean {
 
 disputeRoutes.get("/disputes", async (c) => {
   const offset = Number(c.req.query("offset") ?? "0");
-  const limit = Math.min(50, Number(c.req.query("limit") ?? "20"));
+  const requestedLimit = Number(c.req.query("limit") ?? "20");
+  if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(requestedLimit) || requestedLimit < 1) return c.json({ error: "invalid pagination" }, 400);
+  const limit = Math.min(50, requestedLimit);
   const status = c.req.query("status");
+  const forceFresh = c.req.query("fresh") === "1";
 
   if (isContractConfigured(c.env)) {
     try {
-      await pollOnce(c.env);
+      await pollOnce(c.env, forceFresh);
     } catch (err) {
       console.error("[disputes] live sync before list failed, serving last known index:", (err as Error).message);
     }
@@ -53,8 +56,9 @@ disputeRoutes.get("/disputes", async (c) => {
 
 disputeRoutes.get("/disputes/:id", async (c) => {
   const id = c.req.param("id");
+  const forceFresh = c.req.query("fresh") === "1";
 
-  if (isContractConfigured(c.env) && canRefreshLive(id)) {
+  if (isContractConfigured(c.env) && (forceFresh || canRefreshLive(id))) {
     try {
       const live = await readContract<DisputeDict>(c.env, "get_dispute", [id]);
       await upsertDispute(c.env.DB, live);

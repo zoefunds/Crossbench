@@ -5,6 +5,7 @@ import { fetchDispute } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DisputeActions } from "./DisputeActions";
 import { EvidenceAssessment } from "./EvidenceAssessment";
+import { DeadlineCountdown } from "@/components/DeadlineCountdown";
 
 interface DisputeData {
   id: string;
@@ -15,6 +16,9 @@ interface DisputeData {
   respondent: string;
   status: string;
   stake_wei: string;
+  response_deadline: string;
+  evidence_deadline: string;
+  challenge_deadline: string;
   winner: string;
   bundle_claimant: { kind: string; location: string; description: string }[];
   bundle_respondent: { kind: string; location: string; description: string }[];
@@ -54,9 +58,9 @@ export default function DisputeDetailPage({ params }: { params: Promise<{ id: st
   const [dispute, setDispute] = useState<DisputeData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     try {
-      const data = (await fetchDispute(id)) as unknown as DisputeData;
+      const data = (await fetchDispute(id, { fresh })) as unknown as DisputeData;
       setDispute(data);
       setError(null);
     } catch (err) {
@@ -65,9 +69,12 @@ export default function DisputeDetailPage({ params }: { params: Promise<{ id: st
   }, [id]);
 
   useEffect(() => {
-    load();
-    const interval = setInterval(load, 8000);
-    return () => clearInterval(interval);
+    const initial = setTimeout(() => load(false), 0);
+    const interval = setInterval(() => load(false), 8000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
   }, [load]);
 
   if (error) {
@@ -93,6 +100,16 @@ export default function DisputeDetailPage({ params }: { params: Promise<{ id: st
       <p className="label-sm mb-2 text-purple">{dispute.claim_category.replaceAll("_", " ")}</p>
       <h1 className="font-headline text-2xl font-semibold text-text-ec">{dispute.claim}</h1>
       <p className="data-mono mt-2 text-sm text-text-dim">Policy reference: {dispute.policy_reference}</p>
+
+      {dispute.status === "CREATED" && (
+        <DeadlineCountdown deadline={dispute.response_deadline} label="Response window closes in" onExpire={() => load(true)} />
+      )}
+      {dispute.status === "EVIDENCE_SUBMISSION" && (
+        <DeadlineCountdown deadline={dispute.evidence_deadline} label="Evidence window closes in" onExpire={() => load(true)} />
+      )}
+      {dispute.status === "PRELIMINARY_VERDICT" && (
+        <DeadlineCountdown deadline={dispute.challenge_deadline} label="Challenge window closes in" onExpire={() => load(true)} />
+      )}
 
       <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
         <div className="glass-card p-4">
@@ -144,7 +161,10 @@ export default function DisputeDetailPage({ params }: { params: Promise<{ id: st
           canFinalize={dispute.can_finalize}
           canClaimTimeout={dispute.can_claim_timeout}
           bundleRespondentSubmitted={dispute.bundle_respondent_submitted}
-          onDone={load}
+          responseDeadline={dispute.response_deadline}
+          evidenceDeadline={dispute.evidence_deadline}
+          challengeDeadline={dispute.challenge_deadline}
+          onDone={() => load(true)}
         />
       </div>
     </div>

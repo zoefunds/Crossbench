@@ -6,7 +6,7 @@ import { parseEther } from "viem";
 import { useAccount } from "wagmi";
 import { useGenLayerClient, CONTRACT_ADDRESS, isContractConfigured } from "@/lib/genlayer";
 import { runWrite, type TxProgress } from "@/lib/tx";
-import { EvidenceBundleEditor, type EvidenceItem } from "@/components/EvidenceBundleEditor";
+import { EvidenceBundleEditor, isValidEvidenceItem, type EvidenceItem } from "@/components/EvidenceBundleEditor";
 import { TxStatus } from "@/components/TxStatus";
 import { DISPUTE_EXAMPLES } from "@/lib/exampleData";
 
@@ -29,6 +29,7 @@ export default function NewDisputePage() {
   const [items, setItems] = useState<EvidenceItem[]>([{ kind: "WEB_PAGE", location: "", description: "" }]);
   const [progress, setProgress] = useState<TxProgress | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [completed, setCompleted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exampleIndex, setExampleIndex] = useState(0);
 
@@ -41,10 +42,12 @@ export default function NewDisputePage() {
     setItems(example.claimantItems);
   }
 
-  const claimValid = claim.trim().length >= 40;
-  const policyRefValid = policyRef.trim().length >= 8;
-  const itemsValid = items.length >= 1 && items.every((i) => i.location.trim().length >= 8 && i.description.trim().length >= 8);
-  const canSubmit = claimValid && policyRefValid && itemsValid && Number(stake) > 0 && isConnected && !!client && isContractConfigured;
+  const claimValid = claim.trim().length >= 40 && claim.trim().length <= 1800;
+  const policyRefValid = policyRef.trim().length >= 8 && policyRef.trim().length <= 800;
+  const itemsValid = items.length >= 1 && items.every(isValidEvidenceItem);
+  const stakeNumber = Number(stake);
+  const stakeValid = Number.isFinite(stakeNumber) && stakeNumber >= 0.001 && stakeNumber <= 10;
+  const canSubmit = claimValid && policyRefValid && itemsValid && stakeValid && isConnected && !!client && isContractConfigured;
 
   async function handleSubmit() {
     if (!client || !canSubmit) return;
@@ -62,6 +65,7 @@ export default function NewDisputePage() {
         setProgress,
       );
       if (succeeded) {
+        setCompleted(true);
         router.push(`/disputes?opened=${hash}`);
       } else {
         setError("The transaction did not execute successfully. See status above.");
@@ -92,8 +96,8 @@ export default function NewDisputePage() {
         </button>
       </div>
       <p className="mt-2 text-xs text-text-dim">
-        &quot;Fill example data&quot; loads a complete, real moderation-appeal scenario - real Wikipedia
-        reference URLs and realistic claim text - so you can test the full flow without writing your own case.
+        &quot;Fill example data&quot; loads structurally valid fictional claims with fetchable public context sources.
+        The sources intentionally do not prove the fictional events, so independent validators may return inconclusive.
       </p>
 
       {!isContractConfigured && (
@@ -124,10 +128,11 @@ export default function NewDisputePage() {
             value={claim}
             onChange={(e) => setClaim(e.target.value)}
             rows={4}
+            maxLength={1800}
             placeholder='e.g. "The platform removed my post citing rule 4.2, but the post never referenced the restricted topic."'
             className="w-full rounded border border-border-ec bg-navy-elevated px-3 py-2 text-text-ec placeholder:text-text-dim/60"
           />
-          {!claimValid && claim.length > 0 && <p className="mt-1 text-xs text-error">At least 40 characters - vague grievances are rejected structurally.</p>}
+          {!claimValid && claim.length > 0 && <p className="mt-1 text-xs text-error">Use 40-1800 characters; vague or oversized claims are rejected by the contract.</p>}
         </div>
 
         <div>
@@ -136,6 +141,7 @@ export default function NewDisputePage() {
             value={policyRef}
             onChange={(e) => setPolicyRef(e.target.value)}
             placeholder="https://platform.example.com/policy#rule-4.2"
+            maxLength={800}
             className="data-mono w-full rounded border border-border-ec bg-navy-elevated px-3 py-2 text-sm text-text-ec placeholder:text-text-dim/60"
           />
         </div>
@@ -148,11 +154,15 @@ export default function NewDisputePage() {
         <div>
           <label className="label-sm mb-2 block text-text-dim">Stake (GEN)</label>
           <input
+            type="number"
+            min="0.001"
+            max="10"
+            step="0.001"
             value={stake}
             onChange={(e) => setStake(e.target.value)}
             className="data-mono w-40 rounded border border-border-ec bg-navy-elevated px-3 py-2 text-text-ec"
           />
-          <p className="mt-1 text-xs text-text-dim">The respondent must match this exactly to accept.</p>
+          <p className={`mt-1 text-xs ${stakeValid ? "text-text-dim" : "text-error"}`}>Use 0.001-10 GEN. The respondent must match this exactly to accept.</p>
         </div>
 
         {error && <div className="glass-card border-error/40 p-4 text-sm text-error">{error}</div>}
@@ -160,10 +170,10 @@ export default function NewDisputePage() {
 
         <button
           onClick={handleSubmit}
-          disabled={!canSubmit || submitting}
+          disabled={!canSubmit || submitting || completed}
           className="w-full rounded px-6 py-3 font-semibold text-navy bg-cyan transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {!isConnected ? "Connect your wallet to continue" : submitting ? "Submitting..." : `Stake ${stake} GEN and open dispute`}
+          {!isConnected ? "Connect your wallet to continue" : completed ? "Dispute finalized" : submitting ? "Awaiting finality..." : `Stake ${stake} GEN and open dispute`}
         </button>
       </div>
     </div>

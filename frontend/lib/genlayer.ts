@@ -32,8 +32,11 @@ export function useGenLayerClient() {
   useEffect(() => {
     let cancelled = false;
     if (!connector) {
-      setProvider(null);
-      return;
+      const initial = setTimeout(() => setProvider(null), 0);
+      return () => {
+        cancelled = true;
+        clearTimeout(initial);
+      };
     }
     connector.getProvider().then((p) => {
       if (!cancelled) setProvider(p);

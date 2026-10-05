@@ -17,6 +17,8 @@ primary_region = "ams"
     path = "/health"
 [processes]
   app = "node dist/server.js"
+[env]
+  APP_ORIGIN = "https://crossbench-app.vercel.app"
 [[vm]]
   memory = "512mb"
   cpu_kind = "shared"

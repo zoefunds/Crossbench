@@ -1,77 +1,92 @@
-# Deploying the Crossbench Intelligent Contract
+# Intelligent Contract deployment and cutover
 
-The project's original default was that the user deploys the contract
-themselves. That was explicitly overridden: the user said "deploy the
-address yourself," so Claude now deploys directly via the `genlayer` CLI
-when a (re)deploy is needed, then wires the resulting address into the
-backend and frontend config itself. This doc describes that actual
-workflow, not the original user-deploys default.
+## Current production deployment
 
-**Current live address (StudioNet):** `0xE8820FB49D6b2e5984Bc8F70762bbB659FbA221c`
-(also recorded in `README.md`). Runner: `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`.
+| Field | Value |
+|---|---|
+| Network | GenLayer StudioNet (`61999`) |
+| Contract | `0x44a98ec678A32aCc7024Db2B6242db62b509E8cA` |
+| Deployment transaction | `0x3aeb0ebe64993e369ddb4ed633fa3ecf7e057ab82172785a1bd0a6aceb0ea623` |
+| Runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` |
+| Source | `contracts/crossbench_contract.py` |
 
-Redeploy whenever the contract source changes in a way that needs a fresh
-address (GenLayer contracts aren't upgradeable in place) - this has
-happened several times already for real bug fixes (see `MEMORY.md` for the
-BigInt-serialization and consensus-agreement fixes that each required a
-redeploy).
+Contracts are immutable and each deployment starts with empty dispute/accounting
+state. Do not cut over while the old address has unresolved stakes unless a
+public, tested migration plan exists.
 
-## 1. Deploy via the GenLayer CLI
+## Pre-deployment gates
 
-The contract lives at `contracts/crossbench_contract.py`. It has no
-constructor arguments.
+```bash
+pytest contracts/tests/direct/ -q
+python3 -m py_compile contracts/crossbench_contract.py
+genvm-lint check contracts/crossbench_contract.py --json
+```
+
+The direct suite covers lifecycle authorization/deadlines, evidence validation,
+assessment normalization/agreement, deterministic payouts, credits, withdrawal,
+and accounting. It mocks nondeterminism; run an explicitly budgeted StudioNet
+integration after deployment as well.
+
+## Deploy
 
 ```bash
 genlayer deploy contracts/crossbench_contract.py --network studionet
 ```
 
-(Verify the exact flags against `genlayer --help` for your installed CLI
-version before relying on the command above verbatim - GenLayer CLI flags
-have changed between releases during this project.)
+Record the new address, deployment transaction, source commit, runner, UTC time,
+and pre-cutover stats. Confirm `get_stats` identifies Crossbench, StudioNet, chain
+61999, zero/fresh state, and balanced accounting.
 
-Before deploying, re-run the checks that already passed in this repo, to
-confirm nothing has drifted:
+## Coordinated wiring
 
-```bash
-genvm-lint check contracts/crossbench_contract.py --json
-pytest contracts/tests/direct/ -q
-```
+### Backend
 
-## 2. Wire the deployed address in
-
-### Backend (Fly.io)
+The real Fly secret name is `CONTRACT_ADDRESS`:
 
 ```bash
-cd backend
-fly secrets set CONTRACT_ADDRESS=0xYourContractAddress
-# paste the deployed address when prompted
+fly secrets set CONTRACT_ADDRESS=0xNEW -a crossbench-api
 ```
 
-### Frontend (Next.js / Vercel)
+The restart fails closed if the value is absent or malformed. On the first poll,
+the indexer sees the address change, clears only contract-derived mirror tables,
+resets its watermark, and rebuilds from the new contract.
 
-Set `NEXT_PUBLIC_CONTRACT_ADDRESS` to the deployed address:
-- Locally: add it to `frontend/.env.local`
-- On Vercel: `vercel env rm NEXT_PUBLIC_CONTRACT_ADDRESS production` (if one
-  is already set) then `vercel env add NEXT_PUBLIC_CONTRACT_ADDRESS production`
+### Frontend
 
-`NEXT_PUBLIC_*` vars are baked in at build time, not read at runtime - a
-Vercel env var change alone does **not** update the already-deployed site.
-After changing it, redeploy: `vercel deploy --prod` from `frontend/`, then
-repoint the canonical alias since Vercel does not do this automatically on
-promote:
+Set `NEXT_PUBLIC_CONTRACT_ADDRESS` for Vercel production. It is inlined at build
+time, so changing the environment value without redeploying is ineffective.
 
 ```bash
-vercel alias set <new-deployment-url> crossbench-app.vercel.app
+cd frontend
+vercel env rm NEXT_PUBLIC_CONTRACT_ADDRESS production
+vercel env add NEXT_PUBLIC_CONTRACT_ADDRESS production
+vercel --prod --yes
+vercel alias set <new-deployment-host> crossbench-app.vercel.app
 ```
 
-## 3. Verify the wiring
+Remove the automatically generated Crossbench project alias after assigning the
+canonical hostname.
 
-```bash
-curl https://<your-fly-app>.fly.dev/stats
-```
+## Post-cutover proof
 
-Should return real contract stats (`total_disputes`, `accounting_balanced`,
-etc.), not `{"configured": false}`.
+1. `GET /stats` returns the new contract state and balanced accounting.
+2. `GET /disputes?fresh=1` triggers a coordinated full index pass.
+3. Both Fly machines are started with passing health checks.
+4. The canonical frontend's bundled address equals the backend address.
+5. Open a labelled test dispute on the new production address, counter-stake,
+   submit both bundles, and complete real validator consensus.
+6. Confirm the dispute appears on the canonical frontend.
+7. Respect the real challenge window, then settle and withdraw with the correct
+   owner wallets.
 
-Then open the deployed frontend, connect a wallet with testnet GEN, and open
-a test dispute end to end.
+Record durable state in `docs/` so the deadline phase can resume idempotently.
+
+## Rollback
+
+Restore both Fly `CONTRACT_ADDRESS` and Vercel
+`NEXT_PUBLIC_CONTRACT_ADDRESS` to the same prior address, rebuild the frontend,
+force reindex, and verify stats. Never point the UI/backend at different
+contracts. Never abandon accepted stakes on the replacement; resolve or disclose
+them before rollback.
+
+See `docs/ROLLBACK_CUTOVER.md` for application rollback details.

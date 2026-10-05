@@ -9,23 +9,22 @@ export function rateLimit(bucket: string, maxRequests: number, windowSeconds: nu
     const nowSeconds = Math.floor(Date.now() / 1000);
     const windowStart = nowSeconds - (nowSeconds % windowSeconds);
 
+    // One statement is essential here. A SELECT followed by UPDATE lets
+    // concurrent requests on different Fly machines undercount each other.
     const row = await c.env.DB.prepare(
-      `SELECT window_started_at, count FROM rate_limit_counters WHERE bucket_key = ?`,
-    ).bind(key).first<{ window_started_at: string; count: number }>();
+      `INSERT INTO rate_limit_counters (bucket_key, window_started_at, count) VALUES (?, ?, 1)
+       ON CONFLICT (bucket_key) DO UPDATE SET
+         window_started_at = excluded.window_started_at,
+         count = CASE
+           WHEN rate_limit_counters.window_started_at <> excluded.window_started_at THEN 1
+           ELSE rate_limit_counters.count + 1
+         END
+       RETURNING count`,
+    ).bind(key, String(windowStart)).first<{ count: number }>();
 
-    if (!row || Number(row.window_started_at) !== windowStart) {
-      await c.env.DB.prepare(
-        `INSERT INTO rate_limit_counters (bucket_key, window_started_at, count) VALUES (?, ?, 1)
-         ON CONFLICT (bucket_key) DO UPDATE SET window_started_at = excluded.window_started_at, count = 1`,
-      ).bind(key, String(windowStart)).run();
-      return next();
-    }
-
-    if (row.count >= maxRequests) {
+    if (Number(row?.count ?? maxRequests + 1) > maxRequests) {
       return c.json({ error: "rate limit exceeded, try again shortly" }, 429);
     }
-
-    await c.env.DB.prepare(`UPDATE rate_limit_counters SET count = count + 1 WHERE bucket_key = ?`).bind(key).run();
     await next();
   };
 }

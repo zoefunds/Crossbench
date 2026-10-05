@@ -4,7 +4,7 @@ Source: `contracts/crossbench_contract.py`. This is a reference, not a copy
 - when in doubt, the contract source is authoritative; re-derive this doc
 from it rather than trusting it blindly if the two ever disagree.
 
-Current live deployment (StudioNet): `0xE8820FB49D6b2e5984Bc8F70762bbB659FbA221c`
+Current live deployment (StudioNet): `0x44a98ec678A32aCc7024Db2B6242db62b509E8cA`
 (see `README.md` / `CONTRACT_DEPLOYMENT.md`). Runner:
 `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`.
 
@@ -24,7 +24,7 @@ Current live deployment (StudioNet): `0xE8820FB49D6b2e5984Bc8F70762bbB659FbA221c
 | `RESPONSE_WINDOW` | 86400s (24h) | Time for a respondent to counter-stake and accept |
 | `EVIDENCE_WINDOW` | 259200s (72h) | Time for both sides to submit evidence after acceptance |
 | `CHALLENGE_WINDOW` | 172800s (48h) | Time to submit additive challenge evidence after a preliminary verdict |
-| `ASSESSMENT_TIMEOUT` | 1800s (30m) | Nondeterministic-block timeout guard used internally |
+| `ASSESSMENT_TIMEOUT` | 1800s (30m) | Reserved nondeterministic assessment timeout constant |
 
 `CLAIM_CATEGORIES`: `MODERATION_POLICY_VIOLATION`, `MODERATION_WRONGFUL_ACTION`,
 `CONTENT_LISTING_MISMATCH`, `FACTUAL_ACCOUNT_DISPUTE`.
@@ -58,7 +58,7 @@ PRELIMINARY_VERDICT
      before settling; otherwise it settles on the preliminary verdict)
 
 SETTLED / CANCELLED / DEFAULTED_NO_RESPONSE  (terminal)
-  --withdraw_credit(recipient) [pull-based, anyone with a nonzero credit balance]
+  --withdraw_credit(recipient) [pull-based, recipient must be the transaction sender]
 ```
 
 ## Write methods
@@ -72,7 +72,8 @@ can never be replaced, only added to later via challenge evidence. Stake
 is `gl.message.value`, must be in `[MIN_STAKE, MAX_STAKE]`. Returns the new
 dispute ID (`"ec-<n>"`, sequential). `bundle_json` is a JSON array of up to
 `MAX_ITEMS` `{kind, location, description}` objects (`kind` is `WEB_PAGE`
-or `ONCHAIN_REF`).
+or `ONCHAIN_REF`). Every `location`, including an on-chain explorer/API
+reference, must be an independently retrievable public HTTPS URL.
 
 ### `accept_dispute(dispute_id)` (payable)
 Respondent counter-stakes. `gl.message.value` must **exactly** equal the
@@ -126,10 +127,9 @@ to the winner; `PARTIAL_CLAIMANT`/`PARTIAL_RESPONDENT` splits the pool by
 their own stake.
 
 ### `withdraw_credit(recipient)`
-Pull-based withdrawal of any settled/refunded/cancelled credit balance.
-Anyone can call this for any `recipient` address (it just pays out to
-whatever `recipient` you pass, gated only by that address actually having
-a nonzero credit balance) - it does not require `msg.sender == recipient`.
+Pull-based withdrawal of the caller's settled/refunded/cancelled credit balance. The recipient must match the transaction sender.
+The transaction sender must exactly match `recipient`; nobody can initiate
+another account's withdrawal.
 
 ## View methods
 
@@ -148,14 +148,14 @@ item is a subset of fields: `id`, `claim`, `claim_category`, `claimant`,
 Current withdrawable balance (wei, as a string) for an address.
 
 ### `get_stats() -> dict`
-Protocol-wide counters: `product`, `version`, `network`, `chain_id`, plus
-running totals (`total_deposited`, `dispute_escrow`, `total_claimable`,
-`total_withdrawn`, `disputes_settled`, `disputes_cancelled`,
-`disputes_defaulted`, `disputes_inconclusive`) - useful for an accounting
-sanity check (`dispute_escrow` should always equal the sum of currently-
-locked stakes across non-terminal disputes) but **not** a source for
-frontend marketing copy like "X GEN staked" unless actually displayed as
-real live data, never hardcoded.
+Protocol-wide fields are `product`, `version`, `network`, `chain_id`,
+`total_disputes`, `settled`, `inconclusive`, `defaulted`, `cancelled`,
+`total_deposited_atto`, `dispute_escrow_atto`, `claimable_atto`,
+`withdrawn_atto`, and boolean `accounting_balanced`. Amounts are decimal strings
+in atto-GEN. `accounting_balanced` proves the contract-level invariant
+`total_deposited == dispute_escrow + total_claimable + total_withdrawn`; it does
+not prove that an external index is fresh. Never replace these live values with
+hardcoded marketing counters.
 
 ## Verdict aggregation (`_aggregate`, internal)
 
@@ -170,17 +170,17 @@ integration testing, see `MEMORY.md`):
   `Do not know how to serialize a BigInt` on the frontend.
 - Per-item validator agreement (`_assessments_agree`, used by the
   underlying Equivalence Principle consensus) requires an **exact** match
-  on `supports`, but only **±1 tolerance** on `relevance` (via
-  `RELEVANCE_RANK`), and explicitly **excludes** the free-text `reason_code`
-  from the agreement check entirely - requiring exact agreement on
-  free-text reasoning caused spurious `MAJORITY_DISAGREE`/`UNDETERMINED`
-  outcomes on assessments that were substantively in agreement.
+  on both `supports` and payout-critical `relevance`. Free-text
+  `reason_code` is informational and excluded from agreement because prose
+  phrasing is not decision-critical.
 
 ## Security notes baked into the contract
 
-- `PRIVATE_HOSTS` allow-list rejection (`localhost`, `127.`, `0.`,
-  `169.254.`, `10.`, `192.168.`) on evidence-fetch URLs - SSRF guard.
+- URL parsing rejects credentials, localhost/local domains, and private,
+  loopback, link-local, reserved, or unspecified IPv4/IPv6 literal targets.
 - All text fields are length- and NUL-byte-bounded (`_text` helper).
-- Validators independently fetch evidence themselves; a party's own
+- Every validator independently fetches every evidence source itself; a party's own
   characterization of their evidence is never trusted (see
   `ARCHITECTURE.md`'s trust-boundary section).
+- Unreachable sources are deterministically forced to `NEITHER`/`LOW`, and
+  duplicate or incomplete assessment item sets are rejected.

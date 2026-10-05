@@ -14,7 +14,9 @@ interface AssessedItem {
 export function EvidenceAssessment({ items }: { items: AssessedItem[] | null }) {
   if (!items) return <p className="text-sm text-text-dim">No assessment recorded yet.</p>;
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <div>
+      <p className="mb-3 text-xs text-text-dim">Support and relevance are consensus-critical. The explanation text is leader-authored context and does not affect settlement.</p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {items.map((item) => (
         <div key={item.id} className="glass-card p-4">
           <div className="mb-2 flex items-center justify-between">
@@ -22,9 +24,11 @@ export function EvidenceAssessment({ items }: { items: AssessedItem[] | null }) 
             <span className={`label-sm rounded-sm border px-1.5 py-0.5 ${SUPPORTS_STYLE[item.supports] ?? ""}`}>{item.supports}</span>
           </div>
           <p className="label-sm text-text-dim">Relevance: {item.relevance}</p>
+          <p className="label-sm mt-2 text-text-dim">Leader explanation (non-consensus)</p>
           <p className="mt-1 text-sm text-text-dim">{item.reason_code}</p>
         </div>
       ))}
+      </div>
     </div>
   );
 }

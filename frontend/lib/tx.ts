@@ -1,4 +1,5 @@
 import type { GenLayerClient, GenLayerChain } from "genlayer-js/types";
+import { reportTransactionIssue } from "./operations";
 
 export type TxPhase = "submitted" | "accepted" | "finalized" | "failed";
 
@@ -77,15 +78,23 @@ export async function runWrite(
   }
   onProgress({ phase: "submitted", hash });
 
-  const accepted = await client.waitForTransactionReceipt({ hash: hash as never, status: "ACCEPTED" as never });
-  if (!executionSucceeded(accepted)) {
-    onProgress({ phase: "failed", hash, errorMessage: accepted.consensus_data?.leader_receipt?.[0]?.error ?? "execution failed" });
-    return { hash, succeeded: false };
-  }
+  await client.waitForTransactionReceipt({ hash: hash as never, status: "ACCEPTED" as never });
   onProgress({ phase: "accepted", hash });
 
-  const finalized = await client.waitForTransactionReceipt({ hash: hash as never, status: "FINALIZED" as never });
+  // ACCEPTED is informational only. No caller receives success and no page
+  // refresh happens until the SDK confirms FINALIZED below.
+  const slowFinalityWarning = setTimeout(() => {
+    onProgress({
+      phase: "accepted", hash,
+      errorMessage: "Finality is taking longer than expected. Keep this page open; no UI state will update until finalization completes.",
+    });
+    reportTransactionIssue("TX_FINALITY_STUCK", hash, args.functionName);
+  }, 120_000);
+  const finalized = await client.waitForTransactionReceipt({ hash: hash as never, status: "FINALIZED" as never })
+    .finally(() => clearTimeout(slowFinalityWarning));
   const succeeded = executionSucceeded(finalized);
-  onProgress({ phase: succeeded ? "finalized" : "failed", hash, errorMessage: succeeded ? undefined : "execution failed at finality" });
+  const finalError = finalized.consensus_data?.leader_receipt?.[0]?.error;
+  if (!succeeded) reportTransactionIssue("VALIDATOR_FAILURE", hash, args.functionName);
+  onProgress({ phase: succeeded ? "finalized" : "failed", hash, errorMessage: succeeded ? undefined : finalError ?? "Validator consensus or contract execution failed at finality" });
   return { hash, succeeded };
 }

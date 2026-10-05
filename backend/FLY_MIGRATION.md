@@ -1,21 +1,62 @@
-# Fly.io backend migration
+# Fly.io backend operations
 
-The backend now runs as a Node/Hono service with PostgreSQL. Cloudflare is no longer part of the runtime or deployment path.
+The Cloudflare-to-Fly migration is complete. Cloudflare Workers, D1, and KV are
+not part of the current runtime. This file records the real Fly/PostgreSQL
+deployment rather than obsolete migration steps.
 
-## Required Fly resources
+## Production inventory
 
-Create a Fly app and a PostgreSQL provider/database, then set these secrets on the app:
+- App: `crossbench-api`
+- URL: <https://crossbench-api.fly.dev/>
+- Region: `ams`
+- Machines: two app machines, rolling updates, `GET /health` checks
+- Runtime: Node.js 22, Hono, PostgreSQL
+- Process: `node dist/server.js`
+- Contract variable: `CONTRACT_ADDRESS`
 
-`DATABASE_URL`, `JWT_SECRET`, `INTERNAL_SECRET`, `CONTRACT_ADDRESS`, `GENLAYER_RPC_URL`, `GENLAYER_CHAIN_ID`, and `GENLAYER_RPC_MAX_REQUESTS_PER_DAY`.
+Required secret names are `DATABASE_URL`, `JWT_SECRET`, `INTERNAL_SECRET`,
+`CONTRACT_ADDRESS`, `GENLAYER_RPC_URL`, `GENLAYER_CHAIN_ID`,
+`GENLAYER_NETWORK`, and `GENLAYER_RPC_MAX_REQUESTS_PER_DAY`. Optional Upstash
+variables switch the already-atomic PostgreSQL budget counter to Redis.
 
-Run `npm run db:migrate` against the PostgreSQL URL before starting the app. The service runs the indexer every two minutes and exposes `/health` for Fly checks.
+## Verify and deploy
 
-## Data-preserving cutover
+```bash
+cd backend
+npm ci
+npm test
+npm run typecheck
+npm run build
+npm audit --audit-level=low
+fly deploy --remote-only
+fly status -a crossbench-api
+curl -fsS https://crossbench-api.fly.dev/health
+curl -fsS https://crossbench-api.fly.dev/stats
+curl -fsS 'https://crossbench-api.fly.dev/disputes?fresh=1&limit=50'
+```
 
-1. Export all rows from the Cloudflare D1 database before changing traffic. Preserve the export in encrypted storage.
-2. Load the rows into PostgreSQL, including users, sessions, social connections, disputes, evidence, verdicts, indexer state, and rate-limit counters. Existing refresh sessions remain valid because `JWT_SECRET` is copied unchanged.
-3. Deploy the image with `fly deploy`, set secrets, run migrations, and verify `/health`, `/stats`, `/disputes`, SIWE login, and a protected social endpoint.
-4. Update the frontend API base URL to the Fly hostname and perform a smoke test against the new host.
-5. Keep the Cloudflare Worker and D1 read-only during a short verification window. Only after the Fly app and data checks pass should the Worker, D1 database, and KV namespace be deleted.
+Run migrations before code requiring a new table:
 
-The final deletion is intentionally not automated by this repository because it is irreversible and requires an explicit, credentialed operator action after verification.
+```bash
+fly ssh console -a crossbench-api -C 'node dist/migrate.js'
+```
+
+Migrations are idempotent and lexical. `0004` intentionally drops the unused
+legacy `social_connections` table; no OAuth/social routes remain.
+
+## Internal endpoints
+
+These require `X-Internal-Secret` and are never browser APIs:
+
+- `POST /internal/reindex` — wait for the shared index lock and synchronize.
+- `POST /internal/cleanup` — run coordinated expired-data cleanup.
+- `GET /internal/operations` — return the latest 100 operational events.
+
+Never expose the internal secret or add a backend signer/private key.
+
+## Rollback
+
+Use `fly releases -a crossbench-api`, then deploy the chosen prior image with
+`fly deploy --image <image> -a crossbench-api`. If an old image expects the
+removed empty social table, recreate only that table; do not roll back indexed
+or SIWE data. See `../docs/ROLLBACK_CUTOVER.md` for the full procedure.

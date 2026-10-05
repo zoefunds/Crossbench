@@ -6,6 +6,14 @@ import Link from "next/link";
 import { fetchDisputes, type DisputeSummary } from "@/lib/api";
 import { useGenLayerClient, CONTRACT_ADDRESS, isContractConfigured } from "@/lib/genlayer";
 import { StatusBadge } from "@/components/StatusBadge";
+import { DeadlineCountdown } from "@/components/DeadlineCountdown";
+
+function activeDeadline(dispute: DisputeSummary) {
+  if (dispute.status === "CREATED") return { value: dispute.response_deadline, label: "Response closes in" };
+  if (dispute.status === "EVIDENCE_SUBMISSION" && dispute.evidence_deadline) return { value: dispute.evidence_deadline, label: "Evidence closes in" };
+  if (dispute.status === "PRELIMINARY_VERDICT" && dispute.challenge_deadline) return { value: dispute.challenge_deadline, label: "Challenge closes in" };
+  return null;
+}
 
 export default function ProfilePage() {
   const { address, isConnected } = useAccount();
@@ -49,19 +57,23 @@ export default function ProfilePage() {
       <h2 className="label-sm mt-10 mb-4 text-text-dim">Your disputes</h2>
       {disputes.length === 0 && <p className="text-sm text-text-dim">No disputes yet.</p>}
       <div className="space-y-3">
-        {disputes.map((d) => (
+        {disputes.map((d) => {
+          const deadline = activeDeadline(d);
+          return (
           <Link key={d.id} href={`/disputes/${d.id}`} className="glass-card block p-4 transition hover:border-border-ec-strong">
             <div className="flex items-center justify-between gap-4">
               <p className="min-w-0 flex-1 truncate text-sm text-text-ec">{d.claim}</p>
               <StatusBadge status={d.status} />
             </div>
+            {deadline && <DeadlineCountdown deadline={deadline.value} label={deadline.label} compact />}
           </Link>
-        ))}
+          );
+        })}
       </div>
 
       <div className="mt-10">
         <Link href="/settings" className="text-sm text-cyan hover:underline">
-          Manage social connections and settings →
+          Manage wallet session settings →
         </Link>
       </div>
     </div>

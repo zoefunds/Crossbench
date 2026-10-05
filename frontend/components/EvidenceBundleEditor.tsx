@@ -6,6 +6,51 @@ export interface EvidenceItem {
   description: string;
 }
 
+function isInternalIpv4(hostname: string): boolean {
+  const parts = hostname.split(".");
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) return false;
+  const [a, b] = parts.map(Number);
+  return (
+    a === 0 || a === 10 || a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 0) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+
+function isInternalIpv6(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (!host.includes(":")) return false;
+  return host === "::" || host === "::1" || host.startsWith("fc") || host.startsWith("fd") || /^fe[89ab]/.test(host);
+}
+
+export function isValidEvidenceItem(item: EvidenceItem): boolean {
+  if (item.location.length > 800) return false;
+  try {
+    const url = new URL(item.location);
+    const hostname = url.hostname.toLowerCase();
+    const descriptionLength = item.description.trim().length;
+    return (
+      url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      !!hostname &&
+      hostname !== "localhost" &&
+      !hostname.endsWith(".local") &&
+      !isInternalIpv4(hostname) &&
+      !isInternalIpv6(hostname) &&
+      descriptionLength >= 8 &&
+      descriptionLength <= 600
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function EvidenceBundleEditor({
   items,
   onChange,
@@ -48,14 +93,19 @@ export function EvidenceBundleEditor({
           <input
             value={item.location}
             onChange={(e) => update(i, { location: e.target.value })}
-            placeholder={item.kind === "WEB_PAGE" ? "https://... (must be a public https URL)" : "chain:contract:tx reference"}
+            placeholder={item.kind === "WEB_PAGE" ? "https://... (public source URL)" : "https://explorer.../tx/... (public explorer/API URL)"}
+            maxLength={800}
             className="data-mono w-full rounded border border-border-ec bg-navy-elevated px-3 py-2 text-sm text-text-ec placeholder:text-text-dim/60"
           />
+          {item.location.length > 0 && !item.location.startsWith("https://") && (
+            <p className="text-xs text-error">Every validator must be able to fetch this source independently, so a public HTTPS URL is required.</p>
+          )}
           <textarea
             value={item.description}
             onChange={(e) => update(i, { description: e.target.value })}
             placeholder="What does this item show, and why does it matter to the claim? (8-600 characters)"
             rows={2}
+            maxLength={600}
             className="w-full rounded border border-border-ec bg-navy-elevated px-3 py-2 text-sm text-text-ec placeholder:text-text-dim/60"
           />
         </div>

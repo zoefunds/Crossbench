@@ -6,12 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "build:webpack": "next build --webpack",
+    "test": "../backend/node_modules/.bin/tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
+    "@metamask/connect-evm": "^2.1.1",
     "@reown/appkit": "^1.8.24",
     "@reown/appkit-adapter-wagmi": "^1.8.24",
     "@tanstack/react-query": "^5.103.2",
+    "@walletconnect/ethereum-provider": "^2.25.0",
     "genlayer-js": "^1.1.8",
     "next": "16.3.6",
     "react": "19.2.8",
@@ -21,13 +26,17 @@
     "wagmi": "^3.7.7"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "typescript-eslint": "^8.71.0"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

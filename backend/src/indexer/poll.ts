@@ -2,6 +2,7 @@ import type { Env } from "../lib/env.js";
 import { isContractConfigured } from "../lib/env.js";
 import { readContract } from "../lib/genlayer-client.js";
 import type { Database } from "../lib/db.js";
+import { recordOperationalEvent } from "../lib/operations.js";
 
 export interface DisputeDict {
   id: string;
@@ -31,11 +32,17 @@ const TERMINAL_STATUSES = new Set(["SETTLED", "CANCELLED", "DEFAULTED_NO_RESPONS
 let lastPollAt = 0;
 let pollInFlight: Promise<void> | null = null;
 
-export async function pollOnce(env: Env): Promise<void> {
+export async function pollOnce(env: Env, force = false): Promise<void> {
   if (pollInFlight) return pollInFlight;
-  if (Date.now() - lastPollAt < 30_000) return;
+  if (!force && Date.now() - lastPollAt < 30_000) return;
   lastPollAt = Date.now();
-  pollInFlight = pollOnceInternal(env).finally(() => { pollInFlight = null; });
+  pollInFlight = env.DB.withAdvisoryLock("crossbench:indexer", force, () => pollOnceInternal(env))
+    .then(() => undefined)
+    .catch(async (err) => {
+      await recordOperationalEvent(env, "INDEXER_FAILURE", (err as Error).message).catch(() => undefined);
+      throw err;
+    })
+    .finally(() => { pollInFlight = null; });
   return pollInFlight;
 }
 
@@ -90,21 +97,42 @@ export async function upsertDispute(db: Database, d: DisputeDict) {
 async function pollOnceInternal(env: Env): Promise<void> {
   if (!isContractConfigured(env)) return;
 
+  const contractAddress = env.CONTRACT_ADDRESS!.toLowerCase();
+  const addressRow = await env.DB.prepare(
+    `SELECT value FROM indexer_state WHERE key = 'contract_address'`,
+  ).first<{ value: string }>();
+  if (addressRow?.value.toLowerCase() !== contractAddress) {
+    // The indexed tables are a disposable mirror of one contract. Reusing a
+    // dispute-count watermark after a redeploy makes a fresh contract with a
+    // lower count look fully indexed, and ID reuse would mix two contracts.
+    await env.DB.prepare(`DELETE FROM verdicts`).run();
+    await env.DB.prepare(`DELETE FROM evidence_items`).run();
+    await env.DB.prepare(`DELETE FROM disputes`).run();
+    await env.DB.prepare(`DELETE FROM indexer_state`).run();
+    await env.DB.prepare(
+      `INSERT INTO indexer_state (key, value) VALUES ('contract_address', ?)`,
+    ).bind(contractAddress).run();
+  }
+
   const stats = await readContract<{ total_disputes: string }>(env, "get_stats", []);
   const total = Number(stats.total_disputes);
   const stateRow = await env.DB.prepare(`SELECT value FROM indexer_state WHERE key = 'known_dispute_count'`).first<{ value: string }>();
   const known = Number(stateRow?.value ?? "0");
 
-  if (total > known) {
-    const page = await readContract<{ items: { id: string }[] }>(env, "list_disputes", [known, Math.min(24, total - known)]);
+  let cursor = known;
+  while (cursor < total) {
+    const pageSize = Math.min(24, total - cursor);
+    const page = await readContract<{ items: { id: string }[] }>(env, "list_disputes", [cursor, pageSize]);
     for (const item of page.items) {
       const dispute = await readContract<DisputeDict>(env, "get_dispute", [item.id]);
       await upsertDispute(env.DB, dispute);
     }
+    cursor += page.items.length;
+    if (page.items.length === 0) throw new Error("Contract returned an empty dispute page before the reported total");
     await env.DB.prepare(
       `INSERT INTO indexer_state (key, value) VALUES ('known_dispute_count', ?)
        ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
-    ).bind(String(Math.min(known + 24, total))).run();
+    ).bind(String(cursor)).run();
   }
 
   const active = await env.DB.prepare(
@@ -117,6 +145,7 @@ async function pollOnceInternal(env: Env): Promise<void> {
       await upsertDispute(env.DB, dispute);
     } catch (err) {
       console.error(`[indexer] failed to refresh dispute ${row.id}`, (err as Error).message);
+      await recordOperationalEvent(env, "INDEXER_FAILURE", `Failed to refresh dispute ${row.id}: ${(err as Error).message}`, { disputeId: row.id }).catch(() => undefined);
     }
   }
 }

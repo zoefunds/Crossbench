@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { fetchDisputes } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
+import { DeadlineCountdown } from "@/components/DeadlineCountdown";
+
+function activeDeadline(dispute: Awaited<ReturnType<typeof fetchDisputes>>["items"][number]) {
+  if (dispute.status === "CREATED") return { value: dispute.response_deadline, label: "Response closes in" };
+  if (dispute.status === "EVIDENCE_SUBMISSION" && dispute.evidence_deadline) return { value: dispute.evidence_deadline, label: "Evidence closes in" };
+  if (dispute.status === "PRELIMINARY_VERDICT" && dispute.challenge_deadline) return { value: dispute.challenge_deadline, label: "Challenge closes in" };
+  return null;
+}
 
 function formatStake(wei: string): string {
   return (Number(wei) / 1e18).toFixed(4);
@@ -10,7 +18,7 @@ export default async function DisputesPage() {
   let disputes: Awaited<ReturnType<typeof fetchDisputes>>["items"] = [];
   let loadError: string | null = null;
   try {
-    ({ items: disputes } = await fetchDisputes({ limit: 50 }));
+    ({ items: disputes } = await fetchDisputes({ limit: 50, fresh: true }));
   } catch (err) {
     loadError = (err as Error).message;
   }
@@ -33,7 +41,9 @@ export default async function DisputesPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4">
-        {disputes.map((dispute) => (
+        {disputes.map((dispute) => {
+          const deadline = activeDeadline(dispute);
+          return (
           <Link key={dispute.id} href={`/disputes/${dispute.id}`} className="glass-card block min-w-0 p-5 transition hover:border-border-ec-strong">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0 flex-1">
@@ -46,8 +56,10 @@ export default async function DisputesPage() {
               <span className="data-mono">{dispute.id}</span>
               <span className="data-mono">{formatStake(dispute.stake_wei)} GEN staked</span>
             </div>
+            {deadline && <DeadlineCountdown deadline={deadline.value} label={deadline.label} compact />}
           </Link>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

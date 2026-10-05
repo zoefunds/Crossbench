@@ -1,9 +1,8 @@
 import type { EvidenceItem } from "@/components/EvidenceBundleEditor";
 
-// Real, complete example data for one-click testing - genuine public URLs
-// and realistic claim text, not lorem-ipsum. Picked so a tester can open a
-// dispute, accept it as a second wallet, submit evidence, and trigger
-// evaluation end to end without inventing content by hand.
+// Structurally valid demonstration data for exercising the complete lifecycle.
+// The public sources provide general context; they do not prove the fictional
+// case-specific allegations, so an independent validator may return INCONCLUSIVE.
 export interface DisputeExample {
   category: string;
   claim: string;
@@ -23,7 +22,7 @@ export const DISPUTE_EXAMPLES: DisputeExample[] = [
       {
         kind: "WEB_PAGE",
         location: "https://en.wikipedia.org/wiki/Blanket",
-        description: "Reference page describing generic blanket construction and materials, matching the listing's description of a plain handmade wool blanket.",
+        description: "General background on blanket construction and materials; it does not independently verify the fictional listing or removal event.",
       },
     ],
     respondentItems: [
@@ -44,7 +43,7 @@ export const DISPUTE_EXAMPLES: DisputeExample[] = [
       {
         kind: "WEB_PAGE",
         location: "https://en.wikipedia.org/wiki/Consumer_review",
-        description: "Reference page on consumer reviews, showing the flagged content matches the normal format and tone of a standard product review.",
+        description: "General background on consumer reviews; it does not independently contain or verify the fictional flagged post.",
       },
     ],
     respondentItems: [
@@ -65,7 +64,7 @@ export const DISPUTE_EXAMPLES: DisputeExample[] = [
       {
         kind: "WEB_PAGE",
         location: "https://en.wikipedia.org/wiki/Packaging_and_labeling",
-        description: "Reference page on standard packaging and labeling practices, supporting that the shipment followed conventional protective packaging norms.",
+        description: "General background on packaging practices; it does not independently verify how the fictional shipment was packed or delivered.",
       },
     ],
     respondentItems: [

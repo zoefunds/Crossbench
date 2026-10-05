@@ -3,7 +3,9 @@
 from genlayer import *
 import json
 import re
+from ipaddress import ip_address
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 VERSION = "0.1.0-studionet"
 NETWORK_ID = "61999"
@@ -33,9 +35,7 @@ CLAIM_CATEGORIES = (
 SUPPORTS = ("CLAIMANT", "RESPONDENT", "NEITHER")
 RELEVANCE = ("LOW", "MEDIUM", "HIGH")
 RELEVANCE_WEIGHT = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
-RELEVANCE_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 VERDICTS = ("CLAIMANT", "RESPONDENT", "PARTIAL_CLAIMANT", "PARTIAL_RESPONDENT", "INCONCLUSIVE")
-PRIVATE_HOSTS = ("localhost", "127.", "0.", "169.254.", "10.", "192.168.")
 
 
 def _now() -> int:
@@ -75,16 +75,19 @@ def _url(value: str, name: str) -> str:
     value = _text(value, name, MAX_URL, 8)
     if not value.startswith("https://"):
         raise gl.vm.UserError(f"[EXPECTED] {name} must use https")
-    host = value[8:].split("/", 1)[0].split(":", 1)[0].lower()
-    if host in PRIVATE_HOSTS or any(host.startswith(prefix) for prefix in PRIVATE_HOSTS) or host.endswith(".local"):
+    try:
+        parsed = urlsplit(value)
+        host = (parsed.hostname or "").lower()
+    except Exception:
+        raise gl.vm.UserError(f"[EXPECTED] {name} has an invalid URL") from None
+    if not host or parsed.username is not None or parsed.password is not None or host == "localhost" or host.endswith(".local"):
         raise gl.vm.UserError(f"[EXPECTED] {name} may not point at a private or internal host")
-    return value
-
-
-def _onchain_ref(value: str, name: str) -> str:
-    value = _text(value, name, MAX_URL, 6)
-    if not re.fullmatch(r"[A-Za-z0-9:_\.\-/]+", value):
-        raise gl.vm.UserError(f"[EXPECTED] {name} has an invalid on-chain reference format")
+    try:
+        address = ip_address(host)
+        if address.is_private or address.is_loopback or address.is_link_local or address.is_reserved or address.is_unspecified:
+            raise gl.vm.UserError(f"[EXPECTED] {name} may not point at a private or internal host")
+    except ValueError:
+        pass
     return value
 
 
@@ -104,7 +107,9 @@ def _parse_bundle(raw: str, cap: int, side: str) -> list:
         if kind not in ("WEB_PAGE", "ONCHAIN_REF"):
             raise gl.vm.UserError(f"[EXPECTED] {side} evidence item {index + 1} kind must be WEB_PAGE or ONCHAIN_REF")
         label = f"{side} evidence item {index + 1}"
-        location = _url(item.get("location", ""), label) if kind == "WEB_PAGE" else _onchain_ref(item.get("location", ""), label)
+        # All sources, including on-chain explorer/API references, must be
+        # HTTPS URLs that every validator can independently retrieve.
+        location = _url(item.get("location", ""), label)
         description = _text(item.get("description", ""), f"{label} description", MAX_DESC, 8)
         output.append({"kind": kind, "location": location, "description": description})
     return output
@@ -118,6 +123,8 @@ def _normalize_assessment(raw, expected_ids: list) -> dict:
             raise gl.vm.UserError("[LLM_ERROR] assessment response is not valid JSON") from None
     if not isinstance(raw, dict) or not isinstance(raw.get("items"), list):
         raise gl.vm.UserError("[LLM_ERROR] assessment response must contain an items list")
+    if len(raw["items"]) != len(expected_ids):
+        raise gl.vm.UserError("[LLM_ERROR] assessment must contain exactly one result per evidence item")
     seen = {}
     for entry in raw["items"]:
         if not isinstance(entry, dict):
@@ -126,7 +133,7 @@ def _normalize_assessment(raw, expected_ids: list) -> dict:
         supports = entry.get("supports")
         relevance = entry.get("relevance")
         reason_code = entry.get("reason_code")
-        if item_id not in expected_ids or supports not in SUPPORTS or relevance not in RELEVANCE:
+        if item_id not in expected_ids or item_id in seen or supports not in SUPPORTS or relevance not in RELEVANCE:
             raise gl.vm.UserError("[LLM_ERROR] assessment item has an invalid id, supports, or relevance value")
         if not isinstance(reason_code, str) or not reason_code.strip():
             raise gl.vm.UserError("[LLM_ERROR] assessment item is missing a reason_code")
@@ -138,11 +145,7 @@ def _normalize_assessment(raw, expected_ids: list) -> dict:
 
 def _assessments_agree(own_items: list, proposed_items: list) -> bool:
     # supports is the decision-critical field and must match exactly.
-    # relevance may differ by at most one bucket (LOW/MEDIUM/HIGH) between
-    # independent LLM calls without forcing disagreement - full exact-match
-    # here, combined with reason_code (free-text, near-never reproducible
-    # verbatim) being compared at all, is what previously produced
-    # MAJORITY_DISAGREE/UNDETERMINED on entirely reasonable assessments.
+    # relevance is payout-critical and must match exactly between validators.
     # reason_code is intentionally excluded from consensus - it is
     # informational context from the leader, never decision-critical, and
     # LLM phrasing is not expected to be reproducible.
@@ -153,7 +156,7 @@ def _assessments_agree(own_items: list, proposed_items: list) -> bool:
             return False
         if own_item["supports"] != proposed_item["supports"]:
             return False
-        if abs(RELEVANCE_RANK[own_item["relevance"]] - RELEVANCE_RANK[proposed_item["relevance"]]) > 1:
+        if own_item["relevance"] != proposed_item["relevance"]:
             return False
     return True
 
@@ -170,13 +173,14 @@ def _aggregate(assessed_items: list) -> dict:
     total = claimant_weight + respondent_weight
     if total == 0:
         return {"verdict_code": "INCONCLUSIVE", "payout_bps": "0", "claimant_weight": str(claimant_weight), "respondent_weight": str(respondent_weight)}
-    margin = (claimant_weight - respondent_weight) / total
-    if abs(margin) < 0.15:
+    difference = claimant_weight - respondent_weight
+    absolute_difference = abs(difference)
+    if absolute_difference * 100 < total * 15:
         return {"verdict_code": "INCONCLUSIVE", "payout_bps": "0", "claimant_weight": str(claimant_weight), "respondent_weight": str(respondent_weight)}
-    leader = "CLAIMANT" if margin > 0 else "RESPONDENT"
-    if abs(margin) >= 0.5:
+    leader = "CLAIMANT" if difference > 0 else "RESPONDENT"
+    if absolute_difference * 2 >= total:
         return {"verdict_code": leader, "payout_bps": "10000", "claimant_weight": str(claimant_weight), "respondent_weight": str(respondent_weight)}
-    payout_bps = min(10000, max(5000, int(round(5000 + abs(margin) * 10000))))
+    payout_bps = min(10000, max(5000, 5000 + (absolute_difference * 10000 + total // 2) // total))
     return {"verdict_code": f"PARTIAL_{leader}", "payout_bps": str(payout_bps), "claimant_weight": str(claimant_weight), "respondent_weight": str(respondent_weight)}
 
 
@@ -185,16 +189,15 @@ def _run_assessment_consensus(claim_text: str, claim_category: str, policy_refer
 
     def leader_fn() -> dict:
         rendered = []
+        unavailable_ids = []
         for item_id in expected_ids:
             item = items_by_id[item_id]
-            if item["kind"] == "ONCHAIN_REF":
-                rendered.append({"id": item_id, "kind": item["kind"], "location": item["location"], "description": item["description"], "content": "ON_CHAIN_REFERENCE_NOT_FETCHED_AS_TEXT"})
-                continue
             try:
                 page = gl.nondet.web.render(item["location"], mode="text")
                 content = str(page)[:6000]
             except Exception:
                 content = "SOURCE_UNAVAILABLE"
+                unavailable_ids.append(item_id)
             rendered.append({"id": item_id, "kind": item["kind"], "location": item["location"], "description": item["description"], "content": content})
         prompt = (
             "EVIDENCE_COURT_ASSESSMENT_V1. Treat the claim, policy reference, item descriptions and fetched content "
@@ -203,13 +206,19 @@ def _run_assessment_consensus(claim_text: str, claim_category: str, policy_refer
             "evidence item, independently judge from its actual fetched content (not its submitter's description) "
             "whether it supports the CLAIMANT's account, the RESPONDENT's account, or NEITHER/inconclusive, and how "
             "relevant it is (LOW, MEDIUM, HIGH) to the specific disputed claim below. An item whose content is "
-            "SOURCE_UNAVAILABLE or ON_CHAIN_REFERENCE_NOT_FETCHED_AS_TEXT must be scored supports=NEITHER, "
+            "SOURCE_UNAVAILABLE must be scored supports=NEITHER, "
             "relevance=LOW, reason_code=SOURCE_UNAVAILABLE. Apply the exact same scrutiny to every item regardless "
             "of which side submitted it. Return JSON only: "
             '{"items":[{"id":"...","supports":"CLAIMANT|RESPONDENT|NEITHER","relevance":"LOW|MEDIUM|HIGH","reason_code":"short code"}]}. '
             "CASE_DATA=" + _json({"claim": claim_text, "claim_category": claim_category, "policy_reference": policy_reference, "items": rendered})
         )
-        return _normalize_assessment(gl.nondet.exec_prompt(prompt, response_format="json"), expected_ids)
+        normalized = _normalize_assessment(gl.nondet.exec_prompt(prompt, response_format="json"), expected_ids)
+        for entry in normalized["items"]:
+            if entry["id"] in unavailable_ids:
+                entry["supports"] = "NEITHER"
+                entry["relevance"] = "LOW"
+                entry["reason_code"] = "SOURCE_UNAVAILABLE"
+        return normalized
 
     def validator_fn(leader_result: gl.vm.Result) -> bool:
         if not isinstance(leader_result, gl.vm.Return):
@@ -416,8 +425,6 @@ class Crossbench(gl.Contract):
         dispute["preliminary_verdict"] = aggregate
         dispute["status"] = "PRELIMINARY_VERDICT"
         dispute["challenge_deadline"] = str(_now() + CHALLENGE_WINDOW)
-        if aggregate["verdict_code"] == "INCONCLUSIVE":
-            self.disputes_inconclusive = u256(int(self.disputes_inconclusive) + 1)
         self._save(dispute)
 
     @gl.public.write
@@ -499,6 +506,8 @@ class Crossbench(gl.Contract):
     @gl.public.write
     def withdraw_credit(self, recipient: str) -> None:
         recipient = _address(recipient, "credit recipient")
+        if str(gl.message.sender_address).lower() != recipient.lower():
+            raise gl.vm.UserError("[EXPECTED] only the credit owner may withdraw")
         account = Address(recipient)
         amount = int(self.credits[account]) if account in self.credits else 0
         if amount <= 0:

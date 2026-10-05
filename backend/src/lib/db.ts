@@ -13,6 +13,18 @@ export class Database {
   readonly pool: pg.Pool;
   constructor(connectionString: string) { this.pool = new Pool({ connectionString, max: Number(process.env.DB_POOL_MAX ?? 10), ssl: process.env.DB_SSL === "require" ? { rejectUnauthorized: false } : undefined }); }
   prepare(sql: string) { return new DbStatement(this.pool, sql); }
+  async withAdvisoryLock<T>(key: string, wait: boolean, work: () => Promise<T>): Promise<T | undefined> {
+    const client = await this.pool.connect();
+    try {
+      const lockSql = wait ? `SELECT pg_advisory_lock(hashtext($1)) AS acquired` : `SELECT pg_try_advisory_lock(hashtext($1)) AS acquired`;
+      const result = await client.query<{ acquired: boolean }>(lockSql, [key]);
+      if (!wait && !result.rows[0]?.acquired) return undefined;
+      try { return await work(); }
+      finally { await client.query(`SELECT pg_advisory_unlock(hashtext($1))`, [key]); }
+    } finally {
+      client.release();
+    }
+  }
   async close() { await this.pool.end(); }
 }
 export class ExpiringStore {
