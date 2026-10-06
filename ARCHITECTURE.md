@@ -34,6 +34,27 @@ the backend nor either party supplies fetched content, scores, or verdicts.
 Unreachable sources normalize to `NEITHER`/`LOW`. `reason_code` is explanatory
 leader output, excluded from agreement and money movement.
 
+Four additional controls harden this boundary (see `docs/CONTRACT_SPEC.md` for
+exact mechanics):
+
+- **Category-aware adjudication**: `claim_category` selects a distinct rubric
+  injected into the consensus prompt, so the category changes how evidence is
+  weighed rather than being a cosmetic label.
+- **Source-authenticity consensus**: each validator's independent fetch is
+  content-hash fingerprinted, and that fingerprint is now part of what
+  validators must agree on - a source that renders differently between two
+  independent fetches fails consensus outright instead of being silently
+  trusted.
+- **Mutable-evidence detection**: when challenge evidence triggers a second
+  consensus run, every originally-judged item's fingerprint is compared
+  against the one recorded at the preliminary verdict; any drift is recorded
+  in `source_integrity.mutated_ids` as a permanent, visible audit trail.
+- **Stalled-consensus recovery**: a consensus call that raises is caught,
+  counted, and surfaced as a retryable `[CONSENSUS_FAILED]` error rather than
+  corrupting state. After repeated failures and a grace period,
+  `resolve_stalled_dispute` refunds both stakes instead of leaving them in
+  escrow indefinitely.
+
 ## Backend
 
 The backend uses Node.js 22, Hono, `genlayer-js` 0.9.x, and PostgreSQL. It has no
@@ -115,8 +136,10 @@ and cannot influence protocol state.
   rebinding protection depends on GenLayer's fetch sandbox checking resolved
   addresses; application code cannot control validator infrastructure DNS.
 - Exact relevance agreement protects payout integrity but can reduce liveness.
-  Production dispute `ec-1` completed one real consensus run in 76.66 seconds;
-  that is evidence of a successful path, not a universal liveness guarantee.
+  Three independent real-consensus integration runs against the current
+  contract (`contracts/tests/integration/test_lifecycle.py -m slow`) completed
+  in 201 seconds combined on 2026-10-06; that is evidence of a successful
+  path, not a universal liveness guarantee.
 - StudioNet is a test network and GEN here is testnet value.
 
 ## Ownership

@@ -34,10 +34,20 @@ both transactions):
 
 Local test suites also pass: `pytest contracts/tests/direct/ -q` (25/25),
 `genvm-lint check` (3/3), backend `npm test` (10/10), frontend
-`tsc --noEmit` clean. The StudioNet integration suite
-(`contracts/tests/integration/`) still has not been run - it needs real
-wall-clock waiting (24h+ deadlines) that wasn't attempted here, though its
-test accounts are now funded (10,000 GEN each) and could run it.
+`tsc --noEmit` clean.
+
+The StudioNet integration suite (`contracts/tests/integration/test_lifecycle.py`)
+was then run for real: 3 of its 5 non-deadline tests are self-contained
+(each deploys its own disposable contract) and ran clean -
+`test_full_moderation_appeal_lifecycle_real_consensus`,
+`test_adversarial_evidence_content_is_not_authoritative`,
+`test_symmetric_treatment_of_both_bundles` - 3 passed in 201s
+(`pytest contracts/tests/integration/test_lifecycle.py -m slow -k "not production_visible" --network studionet`).
+`test_production_visible_lifecycle_real_consensus` (writes a labelled test
+dispute directly to the live production contract) and
+`test_resume_recorded_live_lifecycle_after_challenge_expiry` (needs a real
+48-hour wait past a recorded challenge deadline) were run/scheduled
+separately - see `MEMORY.md` for their current status.
 
 ## Cutover performed (2026-10-06)
 

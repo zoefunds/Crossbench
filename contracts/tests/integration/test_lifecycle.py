@@ -21,7 +21,7 @@ from gltest import get_contract_factory, create_account
 from gltest.assertions import tx_execution_succeeded, tx_execution_failed
 
 STAKE = 5 * 10 ** 16
-PRODUCTION_CONTRACT = "0x44a98ec678A32aCc7024Db2B6242db62b509E8cA"
+PRODUCTION_CONTRACT = "0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A"
 
 
 def _bundle(*items):
