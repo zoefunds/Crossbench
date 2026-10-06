@@ -4,7 +4,7 @@ Source: `contracts/crossbench_contract.py`. This is a reference, not a copy
 - when in doubt, the contract source is authoritative; re-derive this doc
 from it rather than trusting it blindly if the two ever disagree.
 
-Current live deployment (StudioNet): `0x44a98ec678A32aCc7024Db2B6242db62b509E8cA`
+Current live deployment (StudioNet): `0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A`
 (see `README.md` / `CONTRACT_DEPLOYMENT.md`). Runner:
 `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`.
 
@@ -25,9 +25,22 @@ Current live deployment (StudioNet): `0x44a98ec678A32aCc7024Db2B6242db62b509E8cA
 | `EVIDENCE_WINDOW` | 259200s (72h) | Time for both sides to submit evidence after acceptance |
 | `CHALLENGE_WINDOW` | 172800s (48h) | Time to submit additive challenge evidence after a preliminary verdict |
 | `ASSESSMENT_TIMEOUT` | 1800s (30m) | Reserved nondeterministic assessment timeout constant |
+| `STALL_GRACE_PERIOD` | 259200s (72h) | Extra time past the evidence/challenge deadline before a dispute stuck on repeated consensus failures can be force-resolved |
+| `STALL_ATTEMPT_THRESHOLD` | 3 | Minimum recorded consensus failures before `resolve_stalled_dispute` is callable |
 
 `CLAIM_CATEGORIES`: `MODERATION_POLICY_VIOLATION`, `MODERATION_WRONGFUL_ACTION`,
-`CONTENT_LISTING_MISMATCH`, `FACTUAL_ACCOUNT_DISPUTE`.
+`CONTENT_LISTING_MISMATCH`, `FACTUAL_ACCOUNT_DISPUTE`. Each category maps to a
+distinct rubric in `CATEGORY_GUIDANCE` that is injected into the consensus
+prompt, so the category actively changes how validators weigh evidence
+rather than being a label the assessment ignores.
+
+`BLOCKED_EVIDENCE_HOSTS`: a fixed set of link-shortener and anonymous-paste
+hosts (`bit.ly`, `tinyurl.com`, `pastebin.com`, etc., plus their subdomains)
+rejected as evidence `location` values on `create_dispute`, `submit_evidence`,
+and `submit_challenge_evidence`. These hosts can be silently repointed at
+different content after submission without changing the URL on record, which
+would defeat the point of pinning evidence - a direct link to the actual
+source is required instead.
 
 `SUPPORTS` (per-item validator vote): `CLAIMANT`, `RESPONDENT`, `NEITHER`.
 
@@ -57,7 +70,14 @@ PRELIMINARY_VERDICT
      consensus assessment over the full item set - original + challenge -
      before settling; otherwise it settles on the preliminary verdict)
 
-SETTLED / CANCELLED / DEFAULTED_NO_RESPONSE  (terminal)
+EVIDENCE_SUBMISSION or PRELIMINARY_VERDICT (challenge added)
+  --resolve_stalled_dispute() [anyone, after STALL_ATTEMPT_THRESHOLD
+     recorded consensus failures AND STALL_GRACE_PERIOD past the relevant
+     deadline]--> NO_CONSENSUS_REFUNDED
+  (escape hatch for a dispute whose validator consensus keeps failing -
+   refunds both stakes rather than leaving them in escrow indefinitely)
+
+SETTLED / CANCELLED / DEFAULTED_NO_RESPONSE / NO_CONSENSUS_REFUNDED  (terminal)
   --withdraw_credit(recipient) [pull-based, recipient must be the transaction sender]
 ```
 
@@ -103,7 +123,14 @@ the aggregate verdict, and opens the challenge window. This is
 deliberately a separate call from `submit_evidence` rather than an
 auto-triggered follow-up, so the payable evidence-submission write stays
 cheap and predictable and the potentially-slow consensus round is its own
-transaction.
+transaction. Records the per-item content fingerprints into
+`evidence_fingerprints` (see Source integrity, below). If the underlying
+consensus call raises (validators disagreed, an LLM formatting fault),
+the error is caught, `eval_attempts` is incremented and persisted, and a
+`[CONSENSUS_FAILED]` `UserError` is raised - dispute state and status are
+otherwise untouched, so the exact same call can simply be retried. After
+`STALL_ATTEMPT_THRESHOLD` recorded failures and `STALL_GRACE_PERIOD` past
+the evidence deadline, `resolve_stalled_dispute` becomes callable instead.
 
 ### `submit_challenge_evidence(dispute_id, bundle_json)`
 Either party, only during `PRELIMINARY_VERDICT` and before
@@ -126,6 +153,30 @@ to the winner; `PARTIAL_CLAIMANT`/`PARTIAL_RESPONDENT` splits the pool by
 `payout_bps` (basis points, 0-10000); `INCONCLUSIVE` refunds both sides
 their own stake.
 
+When challenge evidence was added, the re-run also compares each
+originally-judged item's freshly-refetched content fingerprint against the
+one recorded at the preliminary verdict (`evidence_fingerprints`) and
+records any that changed into `source_integrity.mutated_ids` on the
+dispute - visible, auditable evidence that a source was edited after the
+preliminary verdict formed, even though settlement still proceeds on the
+freshly re-run result. Consensus failures here follow the same pattern as
+`trigger_evaluation`: caught, counted into `finalize_attempts`, surfaced as
+`[CONSENSUS_FAILED]`, retryable, and eventually eligible for
+`resolve_stalled_dispute`.
+
+### `resolve_stalled_dispute(dispute_id)`
+Anyone-callable escape hatch for a dispute whose validator consensus keeps
+failing. Requires the dispute to be in `EVIDENCE_SUBMISSION` (checking
+`eval_attempts` against `evidence_deadline`) or in `PRELIMINARY_VERDICT`
+with challenge evidence added (checking `finalize_attempts` against
+`challenge_deadline`); requires at least `STALL_ATTEMPT_THRESHOLD` recorded
+failures at that stage; requires `STALL_GRACE_PERIOD` to have elapsed past
+the relevant deadline. Refunds both parties' own stake as withdrawable
+credit (same accounting as `INCONCLUSIVE`) and moves the dispute to the
+terminal `NO_CONSENSUS_REFUNDED` status. This exists so that a dispute
+cannot hold both stakes in escrow forever if validators are simply unable
+to agree (flaky sources, a persistently malformed LLM response, etc.).
+
 ### `withdraw_credit(recipient)`
 Pull-based withdrawal of the caller's settled/refunded/cancelled credit balance. The recipient must match the transaction sender.
 The transaction sender must exactly match `recipient`; nobody can initiate
@@ -136,8 +187,12 @@ another account's withdrawal.
 ### `get_dispute(dispute_id) -> dict`
 Full dispute record plus computed `can_accept` / `can_claim_timeout` /
 `can_submit_evidence` / `can_trigger_evaluation` / `can_challenge` /
-`can_finalize` booleans, evaluated against the current block timestamp -
-these drive which action buttons the frontend shows.
+`can_finalize` / `can_resolve_stalled` booleans, evaluated against the
+current block timestamp - these drive which action buttons the frontend
+shows. Also includes `evidence_fingerprints` (per-item content hash from
+the last consensus run), `source_integrity.mutated_ids` (items whose
+content changed between the preliminary and final run), and
+`eval_attempts` / `finalize_attempts` (recorded consensus-failure counts).
 
 ### `list_disputes(offset: u256, count: u256) -> {items, total}`
 Paginated summary listing (`count` must be `1..MAX_DISPUTES_PAGE`). Each
@@ -150,7 +205,7 @@ Current withdrawable balance (wei, as a string) for an address.
 ### `get_stats() -> dict`
 Protocol-wide fields are `product`, `version`, `network`, `chain_id`,
 `total_disputes`, `settled`, `inconclusive`, `defaulted`, `cancelled`,
-`total_deposited_atto`, `dispute_escrow_atto`, `claimable_atto`,
+`no_consensus`, `total_deposited_atto`, `dispute_escrow_atto`, `claimable_atto`,
 `withdrawn_atto`, and boolean `accounting_balanced`. Amounts are decimal strings
 in atto-GEN. `accounting_balanced` proves the contract-level invariant
 `total_deposited == dispute_escrow + total_claimable + total_withdrawn`; it does
@@ -178,9 +233,38 @@ integration testing, see `MEMORY.md`):
 
 - URL parsing rejects credentials, localhost/local domains, and private,
   loopback, link-local, reserved, or unspecified IPv4/IPv6 literal targets.
+- URL parsing also rejects `BLOCKED_EVIDENCE_HOSTS` (link shorteners,
+  anonymous pastes, and their subdomains) - these can be silently
+  repointed at different content after submission, undermining the point
+  of pinning evidence at creation/submission time.
 - All text fields are length- and NUL-byte-bounded (`_text` helper).
 - Every validator independently fetches every evidence source itself; a party's own
   characterization of their evidence is never trusted (see
   `ARCHITECTURE.md`'s trust-boundary section).
 - Unreachable sources are deterministically forced to `NEITHER`/`LOW`, and
   duplicate or incomplete assessment item sets are rejected.
+- **Source-authenticity consensus**: each validator's independent fetch is
+  fingerprinted (`_fingerprint`, SHA-256 truncated to 16 hex chars) and the
+  fingerprint is now part of what `_assessments_agree` requires to match.
+  If one validator's fetch of a source differs from another's (edited
+  mid-flight, inconsistent CDN/geo content, a since-repointed redirect),
+  consensus fails outright instead of silently settling on whichever
+  content one validator happened to see.
+- **Mutable-evidence detection**: when challenge evidence triggers a second
+  consensus run at `finalize_dispute`, every originally-judged item's new
+  fingerprint is compared against the one recorded at the preliminary
+  verdict (`evidence_fingerprints`). Any item whose content changed is
+  recorded in `source_integrity.mutated_ids` on the dispute record - a
+  visible, permanent audit trail of a source being swapped after the
+  preliminary verdict, surfaced on the frontend as a warning.
+- **Category-aware adjudication**: `claim_category` selects a distinct
+  rubric from `CATEGORY_GUIDANCE` that is injected into the consensus
+  prompt, so the category actually changes how evidence gets weighed
+  rather than being a label the LLM is free to interpret generically.
+- **Stalled-consensus recovery**: `trigger_evaluation` and `finalize_dispute`
+  catch a failed consensus run, record the attempt, and raise a retryable
+  `[CONSENSUS_FAILED]` error rather than corrupting state. After
+  `STALL_ATTEMPT_THRESHOLD` failures and `STALL_GRACE_PERIOD` past the
+  relevant deadline, `resolve_stalled_dispute` refunds both stakes rather
+  than leaving a dispute that cannot reach consensus stuck in escrow
+  indefinitely.

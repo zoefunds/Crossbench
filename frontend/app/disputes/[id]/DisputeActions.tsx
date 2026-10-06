@@ -21,6 +21,7 @@ interface Props {
   canChallenge: boolean;
   canFinalize: boolean;
   canClaimTimeout: boolean;
+  canResolveStalled: boolean;
   bundleRespondentSubmitted: boolean;
   responseDeadline: string;
   evidenceDeadline: string;
@@ -185,9 +186,26 @@ export function DisputeActions(props: Props) {
         </div>
       )}
 
-      {props.status === "SETTLED" && isParty && (
+      {props.canResolveStalled && (
+        <div className="glass-card border-error/40 p-5">
+          <p className="mb-3 font-semibold text-text-ec">Validator consensus has repeatedly failed</p>
+          <p className="mb-4 text-sm text-text-dim">
+            Assessment could not reach agreement after multiple attempts and the grace period has elapsed. Anyone may
+            now resolve this dispute by refunding both parties&apos; stakes as withdrawable credit.
+          </p>
+          <button
+            disabled={busy || completedActions.has("resolve_stalled_dispute")}
+            onClick={() => act("resolve_stalled_dispute", [props.disputeId])}
+            className="rounded border border-error/50 px-5 py-2.5 font-semibold text-error disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Refund both stakes
+          </button>
+        </div>
+      )}
+
+      {["SETTLED", "CANCELLED", "DEFAULTED_NO_RESPONSE", "NO_CONSENSUS_REFUNDED"].includes(props.status) && isParty && (
         <div className="glass-card p-5">
-          <p className="mb-3 font-semibold text-text-ec">Withdraw your settled balance</p>
+          <p className="mb-3 font-semibold text-text-ec">Withdraw your {props.status === "SETTLED" ? "settled" : "refunded"} balance</p>
           <button disabled={busy || completedActions.has("withdraw_credit")} onClick={() => act("withdraw_credit", [address])} className="rounded px-5 py-2.5 font-semibold text-navy bg-cyan disabled:cursor-not-allowed disabled:opacity-40">
             Withdraw
           </button>

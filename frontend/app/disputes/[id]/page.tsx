@@ -33,6 +33,8 @@ interface DisputeData {
   can_trigger_evaluation: boolean;
   can_challenge: boolean;
   can_finalize: boolean;
+  can_resolve_stalled: boolean;
+  source_integrity: { mutated_ids: string[] } | null;
 }
 
 function EvidenceBundleList({ title, items }: { title: string; items: { kind: string; location: string; description: string }[] }) {
@@ -141,6 +143,14 @@ export default function DisputeDetailPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
+      {dispute.source_integrity && dispute.source_integrity.mutated_ids.length > 0 && (
+        <div className="mt-6 glass-card border-error/40 p-4 text-sm text-error">
+          Source integrity warning: evidence item{dispute.source_integrity.mutated_ids.length > 1 ? "s" : ""}{" "}
+          {dispute.source_integrity.mutated_ids.join(", ")} resolved to different content when re-fetched at
+          finalization than at the preliminary verdict. The final verdict was computed from the re-fetched content.
+        </div>
+      )}
+
       <div className="mt-8 grid gap-6 sm:grid-cols-2">
         <EvidenceBundleList title="Claimant's evidence" items={dispute.bundle_claimant} />
         <EvidenceBundleList title="Respondent's evidence" items={dispute.bundle_respondent} />
@@ -160,6 +170,7 @@ export default function DisputeDetailPage({ params }: { params: Promise<{ id: st
           canChallenge={dispute.can_challenge}
           canFinalize={dispute.can_finalize}
           canClaimTimeout={dispute.can_claim_timeout}
+          canResolveStalled={dispute.can_resolve_stalled}
           bundleRespondentSubmitted={dispute.bundle_respondent_submitted}
           responseDeadline={dispute.response_deadline}
           evidenceDeadline={dispute.evidence_deadline}

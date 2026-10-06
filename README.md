@@ -13,15 +13,15 @@ accept, evaluate, settle, or withdraw a dispute.
 | Frontend | <https://crossbench-app.vercel.app/> (the only supported frontend URL) |
 | Read-only API | <https://crossbench-api.fly.dev/> |
 | Network | GenLayer StudioNet, chain ID `61999` |
-| Intelligent Contract | `0x44a98ec678A32aCc7024Db2B6242db62b509E8cA` |
-| Deployment transaction | `0x3aeb0ebe64993e369ddb4ed633fa3ecf7e057ab82172785a1bd0a6aceb0ea623` |
+| Intelligent Contract | `0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A` |
+| Deployment transaction | `0x994141b9b4131b0b1abc1cc38870256bd9acdc87f0a4ef37cdf4460f0e56450d` |
 | Contract runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` |
 
-The production contract currently contains the explicitly labelled live
-consensus test dispute `ec-1`. It reached `PRELIMINARY_VERDICT` through real
-validator consensus. Its genuine 48-hour challenge deadline is
-2026-10-07 04:42:50 UTC (05:42:50 Africa/Lagos); final settlement and withdrawal
-must not occur before that contract-enforced deadline.
+The production contract currently contains two explicitly labelled test
+disputes from the 2026-10-06 cutover verification: `ec-1` reached
+`PRELIMINARY_VERDICT` through real validator consensus and is in its
+genuine 48-hour challenge window; `ec-2` was cancelled and its stake
+withdrawn, exercising the refund-workflow fix end to end.
 
 ## Repository
 

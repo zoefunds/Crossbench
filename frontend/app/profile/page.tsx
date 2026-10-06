@@ -5,8 +5,10 @@ import { useAccount } from "wagmi";
 import Link from "next/link";
 import { fetchDisputes, type DisputeSummary } from "@/lib/api";
 import { useGenLayerClient, CONTRACT_ADDRESS, isContractConfigured } from "@/lib/genlayer";
+import { runWrite, type TxProgress } from "@/lib/tx";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DeadlineCountdown } from "@/components/DeadlineCountdown";
+import { TxStatus } from "@/components/TxStatus";
 
 function activeDeadline(dispute: DisputeSummary) {
   if (dispute.status === "CREATED") return { value: dispute.response_deadline, label: "Response closes in" };
@@ -20,6 +22,9 @@ export default function ProfilePage() {
   const client = useGenLayerClient();
   const [disputes, setDisputes] = useState<DisputeSummary[]>([]);
   const [credit, setCredit] = useState<string | null>(null);
+  const [progress, setProgress] = useState<TxProgress | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!address) return;
@@ -28,13 +33,32 @@ export default function ProfilePage() {
       .catch(() => setDisputes([]));
   }, [address]);
 
-  useEffect(() => {
+  function refreshCredit() {
     if (!client || !address || !isContractConfigured) return;
     client
       .readContract({ address: CONTRACT_ADDRESS, functionName: "get_credit", args: [address] })
       .then((v) => setCredit(String(v)))
       .catch(() => setCredit(null));
-  }, [client, address]);
+  }
+
+  useEffect(refreshCredit, [client, address]);
+
+  async function withdraw() {
+    if (!client || !address) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { succeeded } = await runWrite(client, { address: CONTRACT_ADDRESS, functionName: "withdraw_credit", args: [address] }, setProgress);
+      if (succeeded) refreshCredit();
+      else setError("Transaction executed but did not succeed. See status above.");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const hasCredit = Boolean(credit) && credit !== "0";
 
   if (!isConnected) {
     return (
@@ -52,6 +76,18 @@ export default function ProfilePage() {
       <div className="mt-6 glass-card p-5">
         <p className="label-sm text-text-dim">Withdrawable credit</p>
         <p className="data-mono mt-1 text-2xl text-cyan">{credit ? (Number(credit) / 1e18).toFixed(4) : "0.0000"} GEN</p>
+        <p className="mt-2 text-xs text-text-dim">
+          Covers settled winnings and refunds from cancelled or unanswered disputes - withdraw anytime from here.
+        </p>
+        <button
+          disabled={busy || !hasCredit || !client}
+          onClick={withdraw}
+          className="mt-4 rounded px-5 py-2.5 font-semibold text-navy bg-cyan disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Withdraw
+        </button>
+        {error && <div className="mt-3 glass-card border-error/40 p-3 text-sm text-error">{error}</div>}
+        <TxStatus progress={progress} />
       </div>
 
       <h2 className="label-sm mt-10 mb-4 text-text-dim">Your disputes</h2>

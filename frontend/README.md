@@ -50,7 +50,7 @@ Autofill public pages provide context but do not prove fictional events; an
 ## Environment
 
 ```dotenv
-NEXT_PUBLIC_CONTRACT_ADDRESS=0x44a98ec678A32aCc7024Db2B6242db62b509E8cA
+NEXT_PUBLIC_CONTRACT_ADDRESS=0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A
 NEXT_PUBLIC_API_URL=http://localhost:8080
 NEXT_PUBLIC_GENLAYER_CHAIN_ID=61999
 NEXT_PUBLIC_GENLAYER_RPC_URL=https://studio.genlayer.com/api

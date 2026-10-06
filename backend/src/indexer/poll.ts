@@ -28,7 +28,7 @@ export interface DisputeDict {
   final_assessment: unknown[] | null;
 }
 
-const TERMINAL_STATUSES = new Set(["SETTLED", "CANCELLED", "DEFAULTED_NO_RESPONSE"]);
+const TERMINAL_STATUSES = new Set(["SETTLED", "CANCELLED", "DEFAULTED_NO_RESPONSE", "NO_CONSENSUS_REFUNDED"]);
 let lastPollAt = 0;
 let pollInFlight: Promise<void> | null = null;
 
