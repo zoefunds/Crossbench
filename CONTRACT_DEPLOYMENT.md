@@ -43,11 +43,12 @@ was then run for real: 3 of its 5 non-deadline tests are self-contained
 `test_adversarial_evidence_content_is_not_authoritative`,
 `test_symmetric_treatment_of_both_bundles` - 3 passed in 201s
 (`pytest contracts/tests/integration/test_lifecycle.py -m slow -k "not production_visible" --network studionet`).
-`test_production_visible_lifecycle_real_consensus` (writes a labelled test
-dispute directly to the live production contract) and
-`test_resume_recorded_live_lifecycle_after_challenge_expiry` (needs a real
-48-hour wait past a recorded challenge deadline) were run/scheduled
-separately - see `MEMORY.md` for their current status.
+`test_production_visible_lifecycle_real_consensus` was then run directly
+against the live production contract - 1 passed in 68s, creating dispute
+`ec-3` with a real preliminary verdict, confirmed visible on the canonical
+frontend. `test_resume_recorded_live_lifecycle_after_challenge_expiry`
+remains unrun by design - it needs a real 48-hour wait past a recorded
+challenge deadline; see `MEMORY.md` for current status.
 
 ## Cutover performed (2026-10-06)
 

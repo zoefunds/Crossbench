@@ -1,0 +1,11 @@
+{
+  "network": "studionet",
+  "contract_address": "0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A",
+  "dispute_id": "ec-3",
+  "claimant": "0xF526ADbdEB5169e7CeA32c06EF69d7ce4a2D6276",
+  "respondent": "0x94D2637d397f7277b4d9d21796bbAFe08F9De416",
+  "challenge_deadline": 1791472380,
+  "challenge_deadline_utc": "2026-10-08T15:13:00Z",
+  "preliminary_verdict": "INCONCLUSIVE",
+  "completed_through": "PRELIMINARY_VERDICT"
+}

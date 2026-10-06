@@ -196,12 +196,13 @@ running real (not mocked) multi-validator GenVM consensus:
 The direct-mode suite (`contracts/tests/direct/`) also grew from 18 to 25
 tests, adding coverage for every mechanism in this document; all 25 pass.
 
-Two tests remain unrun and are tracked, not silently skipped:
-`test_production_visible_lifecycle_real_consensus` (writes a labelled dispute
-directly to the live production contract) and
-`test_resume_recorded_live_lifecycle_after_challenge_expiry` (needs a real
-48-hour wait past a recorded challenge deadline, by design - the contract's
-windows are not shortened for testing). Current status of both: `MEMORY.md`.
+`test_production_visible_lifecycle_real_consensus` was then run directly
+against the live production contract: it created a new labelled dispute
+(`ec-3`), ran real validator consensus, and confirmed the result is visible
+on the canonical frontend - 1 passed in 68 seconds. One test remains unrun
+by design: `test_resume_recorded_live_lifecycle_after_challenge_expiry`
+needs a real 48-hour wait past a recorded challenge deadline (the contract's
+windows are not shortened for testing). Current status: `MEMORY.md`.
 
 ## Deployment and cutover
 

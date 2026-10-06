@@ -60,6 +60,13 @@ Full detail and the specific team-review items each change answers: `REVIEW.md`.
   challenge window as of 2026-10-06.
 - `ec-2`: created, cancelled by the claimant, credit withdrawn. Proves the
   refund-workflow fix end to end: credit went `0.05 GEN -> 0`.
+- `ec-3`: created via `test_production_visible_lifecycle_real_consensus`
+  against the live production contract itself. Real validator consensus
+  reached `PRELIMINARY_VERDICT` (`INCONCLUSIVE`) in 68 seconds; confirmed
+  visible on the canonical frontend at
+  `https://crossbench-app.vercel.app/disputes/ec-3`. State recorded in
+  `docs/PRODUCTION_LIVE_LIFECYCLE_STATE.json`; real 48-hour challenge window
+  closes `2026-10-08T15:13:00Z`.
 - Three real-consensus integration tests
   (`contracts/tests/integration/test_lifecycle.py -m slow`, excluding the
   production-visible and deadline-resume tests) passed against disposable
@@ -68,10 +75,9 @@ Full detail and the specific team-review items each change answers: `REVIEW.md`.
   `test_adversarial_evidence_content_is_not_authoritative`,
   `test_symmetric_treatment_of_both_bundles`.
 
-Not yet run: `test_production_visible_lifecycle_real_consensus` (writes a
-labelled dispute to the live production contract) and
-`test_resume_recorded_live_lifecycle_after_challenge_expiry` (needs a real
-48-hour wait past a recorded challenge deadline).
+Not yet run: `test_resume_recorded_live_lifecycle_after_challenge_expiry`
+(needs a real 48-hour wait past a recorded challenge deadline - the
+earliest it can resume is `ec-1`'s deadline on 2026-10-08).
 
 ## Verified design decisions
 
@@ -117,7 +123,7 @@ labelled dispute to the live production contract) and
 ## Latest verification baseline (2026-10-06)
 
 - Contract direct suite: 25 passing (18 pre-existing + 7 new hardening tests).
-- Contract real-consensus integration suite: 3 passing (see above).
+- Contract real-consensus integration suite: 4 passing (see above).
 - Backend suite: 10 passing; typecheck passing.
 - Frontend: 7 passing; typecheck passing.
 - `genvm-lint check`: 3/3 lint checks passing (runner-tarball validation step
