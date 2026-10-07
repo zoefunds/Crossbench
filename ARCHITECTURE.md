@@ -66,11 +66,12 @@ exact mechanics):
   consensus run, every originally-judged item's fingerprint is compared
   against the one recorded at the preliminary verdict; any drift is recorded
   in `source_integrity.mutated_ids` as a permanent, visible audit trail.
-- **Stalled-consensus recovery**: version 0.3.1 records a failed attempt and
-  returns successfully instead of raising, allowing StudioNet to commit the
-  counter while leaving the action retryable. After the threshold and grace
-  period, `resolve_stalled_dispute` refunds both stakes. Evaluation and final
-  assessment failure paths are both covered by direct VM tests.
+- **Stalled-consensus recovery design**: version 0.3.1 catches failures raised
+  inside the contract execution, records their stage/time/counter, and leaves
+  the action retryable. Direct-VM tests cover evaluation and final-assessment
+  refund paths. A real StudioNet outer-consensus failure bypassed that catch and
+  did not persist the counter, so the threshold is not network-reliable; see
+  the security limitations below.
 
 ## Backend
 
@@ -159,9 +160,12 @@ and cannot influence protocol state.
   relevance/provenance judgments and harmless dynamic-page render differences.
   Recorded real-consensus integration runs demonstrate successful fetch and
   assessment paths for their sources, not a universal liveness guarantee.
-- Historical 0.3.0 contracts raised after saving, so StudioNet rolled those
-  failure counters back. Version 0.3.1 avoids that rollback pattern;
-  historical affected test escrows remain in `docs/ESCROW_RECOVERY.md`.
+- StudioNet can fail consensus outside the contract execution frame. The first
+  such failure observed on production 0.3.1 left `eval_attempts=0`, despite the
+  inner exception handler. A future version needs a deterministic two-phase
+  prepare/attempt protocol before the escape-hatch threshold can be described
+  as network-reliable. A later retry reached `PRELIMINARY_VERDICT`; affected
+  historical test escrows remain in `docs/ESCROW_RECOVERY.md`.
 - StudioNet is a test network and GEN here is testnet value.
 
 ## Ownership

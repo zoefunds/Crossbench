@@ -43,7 +43,7 @@ is `PRIMARY`, the structured block reference is `CORROBORATED`, and duplicate
 and mutation arrays are empty. Backend fresh indexing and the canonical
 frontend both expose it. State is in `docs/PRODUCTION_LIVE_LIFECYCLE_STATE.json`.
 
-Its challenge deadline is `2026-10-09T08:13:12Z`. After that, run the resumable
+Its challenge deadline is `2026-10-09T09:21:10Z`. After that, run the resumable
 deadline integration to finalize and withdraw both test credits. Superseded
 contract escrows and their limits are fully inventoried in
 `docs/ESCROW_RECOVERY.md`.

@@ -36,15 +36,15 @@ build completed successfully.
 
 - Contract: `0x2352A0cBF175F1e69eBc8364A35301570378FF22`.
 - Deployment consensus: one round, all five validators agreeing.
-- Current lifecycle: fresh state, zero disputes and zero escrow.
-- Historical live lifecycle: former production `ec-1`,
-  `PRELIMINARY_VERDICT`, real 0.1 GEN matched escrow.
+- Current lifecycle: production `ec-1`, `PRELIMINARY_VERDICT`, real 0.1 GEN
+  matched escrow, preliminary result `INCONCLUSIVE`, challenge deadline
+  `2026-10-09T09:21:10Z`.
 - Policy: Ethereum Foundation, `PRIMARY`.
 - Ledger object: Ethereum mainnet genesis block, `eip155:1`, type `BLOCK`,
   full hash recorded in the lifecycle JSON, quality `CORROBORATED`.
 - Integrity: no duplicate or mutation flags.
-- API: both machines healthy, fresh stats version `0.3.1-studionet`, zero
-  state, accounting balanced.
+- API: both machines healthy, fresh stats version `0.3.1-studionet`, one
+  dispute, 0.1 GEN deposits/escrow, accounting balanced.
 - Frontend: canonical alias serves deployment
   `dpl_3iHiVaxMdhxQwmdgCYJs69PbpQn6`; its bundles contain the current contract
   address and not the former address.
@@ -58,6 +58,7 @@ Direct tests show 0.3.1 catching an inner failure and persisting the counter,
 stage, and timestamp. The first post-cutover real StudioNet assessment did not
 advance and a direct read still reported `eval_attempts=0`, demonstrating that
 an outer consensus failure bypasses that catch. The production deployment
-remains accounting-balanced, but the stalled-consensus threshold is not yet
-network-reliable. Former deployments and their immutable test stakes remain
+remains accounting-balanced; a later retry reached `PRELIMINARY_VERDICT`, but
+the stalled-consensus threshold is not yet network-reliable. Former deployments
+and their immutable test stakes remain
 inventoried in `ESCROW_RECOVERY.md`.

@@ -1,7 +1,8 @@
 # Crossbench frontend
 
 Production: <https://crossbench-app.vercel.app/>. This is the only supported
-frontend URL. Generated Vercel project aliases must be removed after deployment.
+frontend URL. Vercel-managed deployment/project aliases may remain reachable,
+but they are not published application origins and are excluded from SIWE/CORS.
 
 ## Stack
 

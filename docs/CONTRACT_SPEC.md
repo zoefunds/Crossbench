@@ -5,8 +5,9 @@ Source: `contracts/crossbench_contract.py`. This is a reference, not a copy
 from it rather than trusting it blindly if the two ever disagree.
 
 Current live deployment is version `0.3.1-studionet` at
-`0x2352A0cBF175F1e69eBc8364A35301570378FF22`. It records consensus failures
-without reverting their counters. Runner:
+`0x2352A0cBF175F1e69eBc8364A35301570378FF22`. It records catchable inner
+assessment failures, but StudioNet outer-consensus failures can still bypass
+the handler and roll back the counter. Runner:
 `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`.
 
 ## Constants
@@ -144,11 +145,12 @@ transaction. Records the per-item content fingerprints into
 `evidence_fingerprints`, the policy provenance result into
 `policy_assessment`, and content aliases into
 `source_integrity.duplicate_ids` (see Source integrity, below). If the underlying
-consensus call raises (validators disagreed, an LLM formatting fault), version
-0.3.1 increments `eval_attempts`, records the stage/time, saves, and returns
-successfully. The status remains untouched and the same call can be retried.
-Returning is essential: raising after saving would roll the write back on
-StudioNet. After `STALL_ATTEMPT_THRESHOLD` recorded failures and
+consensus call raises inside the contract execution (for example, a catchable
+LLM or fetch exception), version 0.3.1 increments `eval_attempts`, records the
+stage/time, saves, and returns. The status remains untouched and the same call
+can be retried. A StudioNet outer-consensus failure can occur outside this
+catch; a live occurrence left `eval_attempts=0`. After
+`STALL_ATTEMPT_THRESHOLD` successfully recorded failures and
 `STALL_GRACE_PERIOD` past the evidence deadline, `resolve_stalled_dispute`
 becomes callable.
 
@@ -180,10 +182,9 @@ records any that changed into `source_integrity.mutated_ids` on the
 dispute - visible, auditable evidence that a source was edited after the
 preliminary verdict formed, even though settlement still proceeds on the
 freshly re-run result. Consensus failures here follow the same pattern as
-`trigger_evaluation`: caught, counted into `finalize_attempts`, recorded with
-the failure stage and timestamp, and returned without raising so StudioNet
-commits the counter. The action remains retryable and eventually becomes
-eligible for `resolve_stalled_dispute`.
+`trigger_evaluation` for catchable inner exceptions: counted into
+`finalize_attempts`, recorded with the failure stage and timestamp, and returned
+without raising. Outer-consensus failures may still roll back the whole write.
 
 ### `resolve_stalled_dispute(dispute_id)`
 Anyone-callable escape hatch for a dispute whose validator consensus keeps
@@ -306,9 +307,11 @@ Important aggregation and consensus rules:
   prompt, so the category actually changes how evidence gets weighed
   rather than being a label the LLM is free to interpret generically.
 - **Stalled-consensus recovery**: `trigger_evaluation` and `finalize_dispute`
-  catch a failed consensus run, record its counter/stage/time, and return
-  successfully while leaving the action retryable. This lets StudioNet commit
-  the recovery state. After
+  catch inner assessment exceptions, record counter/stage/time, and return
+  while leaving the action retryable. Direct-VM tests cover this path. A real
+  StudioNet outer-consensus failure bypassed the handler and persisted no
+  counter, so the escape hatch is not network-reliable. Where failures are
+  successfully recorded, after
   `STALL_ATTEMPT_THRESHOLD` failures and `STALL_GRACE_PERIOD` past the
   relevant deadline, `resolve_stalled_dispute` refunds both stakes rather
   than leaving a dispute that cannot reach consensus stuck in escrow

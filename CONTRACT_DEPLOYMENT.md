@@ -17,28 +17,29 @@ and cross-explorer deduplication. Deployed, verified, and cut over on 2026-10-07
 | Deployment transaction | `0xea3fee2c375a3cf676f49431a1019332d476d1f356e73f5b7621ab2f5a5e2322` |
 | Deployed by | `0x8D4E752AE688C21eC7C7D4d8a232B5e0700DBf0f` |
 | Runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` |
-| Source state | Commit `4d3264abefafde12c024baf244a887259c052370`; recovery update pending publication |
+| Production source commit | `c32e22c5d4a1b4d53761ac35499ec3b84bdae8c7` |
 
 Deployment reached `MAJORITY_AGREE` in one round with all five validators
-agreeing. `get_stats()` confirmed version `0.3.1-studionet`, fresh/zero state,
-and balanced accounting. The previous 0.3.0 production deployment had a real,
-stake-backed lifecycle:
+agreeing. The initial `get_stats()` read confirmed version `0.3.1-studionet`,
+fresh/zero state, and balanced accounting. Production now contains labelled
+smoke dispute `ec-1`, which completed:
 `create_dispute` -> `accept_dispute` -> `submit_evidence` ->
 `trigger_evaluation` -> `PRELIMINARY_VERDICT`. The official Ethereum policy
 was classified `PRIMARY`; the fetched evidence audit retained both content
 fingerprints; the Ethereum genesis-block API reference and its structured
 `eip155:1/BLOCK/<hash>` identity were classified `CORROBORATED`; `duplicate_ids`
-and `mutated_ids` were empty. Durable state is in
+and `mutated_ids` are empty. Durable current state is in
 `docs/PRODUCTION_LIVE_LIFECYCLE_STATE.json`.
 
 Current local suites pass: contract direct tests (34/34), pinned GenVM semantic
 validation, backend tests (10/10), frontend tests (9/9), lint, typecheck, and
 production build. Both npm audits report zero known vulnerabilities.
 
-That historical StudioNet integration was run with real public
-Ethereum sources and real validator consensus. Settlement and withdrawal are
-deadline-gated until `2026-10-09T08:13:12Z`; the resumable test and state file
-will complete that final phase without duplicating stake-bearing writes.
+The current StudioNet integration used real public Ethereum sources, wallet-
+signed writes, 0.1 matched test GEN, and real validator consensus. Its
+preliminary result is `INCONCLUSIVE`; settlement is deadline-gated until
+`2026-10-09T09:21:10Z`. The resumable test and state file can complete the
+deadline phase without duplicating stake-bearing writes.
 
 ## Cutover performed (2026-10-07)
 
@@ -49,14 +50,14 @@ will complete that final phase without duplicating stake-bearing writes.
      `indexer_state.contract_address` no longer matches, it deletes
      `verdicts`, `evidence_items`, `disputes`, and `indexer_state`, then
      reindexes from the new contract). Confirmed: `/disputes` returns the
-     new contract's empty state; `/stats` reports version `0.3.1-studionet`,
-     zero escrow, and balanced accounting. Both Fly machines are version 25
-     with passing health checks.
+     new contract state. The latest `/stats` reports version
+     `0.3.1-studionet`, one dispute, 0.1 GEN escrow/deposits, and balanced
+     accounting. Both Fly machines are version 25 with passing health checks.
 2. Vercel production `NEXT_PUBLIC_CONTRACT_ADDRESS` was replaced and the app
    rebuilt with the new value inlined.
 3. Vercel deployment `dpl_3iHiVaxMdhxQwmdgCYJs69PbpQn6` was assigned to
    `crossbench-app.vercel.app`.
-4. The canonical `/disputes` page renders the new empty index, and the deployed
+4. The canonical `/disputes` page renders production `ec-1`, and the deployed
    JavaScript bundles contain the exact 0.3.1 address and not the old address.
 
 The old contract address below is no longer referenced by any running
@@ -146,10 +147,10 @@ production SIWE/CORS and published links use `crossbench-app.vercel.app`.
 
 Record durable state in `docs/` so the deadline phase can resume idempotently.
 
-StudioNet currently reverts writes whose outer consensus fails, including a
-counter update attempted before raising. The 0.3.1 deployment below avoids that
-failure pattern by committing a recorded failed attempt in a successful outer
-write; do not rely on the old 0.3.0 path for stalled-consensus recovery.
+StudioNet can discard the whole write when outer consensus fails. Version 0.3.1
+handles catchable inner exceptions, but a real outer failure still left
+`eval_attempts=0`. Do not treat `resolve_stalled_dispute` as network-reliable
+until a deterministic two-phase attempt protocol is deployed.
 
 ## Rollback-safe recovery production deployment
 
@@ -163,7 +164,7 @@ then cut over to both production services on 2026-10-07.
 | Deployed by | `0x8D4E752AE688C21eC7C7D4d8a232B5e0700DBf0f` |
 | Runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` |
 | Deployment consensus | One round, `MAJORITY_AGREE`, 5/5 validators agreed |
-| Read verification | `0.3.1-studionet`, zero state, balanced accounting |
+| Latest read verification | `0.3.1-studionet`, one dispute, 0.1 GEN escrow, balanced accounting |
 | Application routing | Fly API and canonical Vercel frontend |
 
 In direct-VM execution, 0.3.1 catches evaluation or finalization failures,
@@ -176,7 +177,9 @@ read still reported `eval_attempts=0`. This demonstrates that the network's
 outer consensus failure can occur outside the contract catch. Therefore the
 rollback-safe threshold is not live-verified and must not be represented as a
 complete StudioNet fix; a separate deterministic prepare/attempt transaction
-is required for network-independent failure accounting.
+is required for network-independent failure accounting. A later assessment
+retry succeeded and moved `ec-1` to `PRELIMINARY_VERDICT`; that success does not
+change the failure-counter observation.
 
 ## Rollback
 
