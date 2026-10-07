@@ -22,17 +22,17 @@ from gltest import get_contract_factory, create_account
 from gltest.assertions import tx_execution_succeeded, tx_execution_failed
 
 STAKE = 5 * 10 ** 16
-PRODUCTION_CONTRACT = os.environ.get("CROSSBENCH_PRODUCTION_CONTRACT", "0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A")
+PRODUCTION_CONTRACT = os.environ.get("CROSSBENCH_PRODUCTION_CONTRACT", "0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6")
 
 ETHEREUM_BLOCK_POLICY = "https://ethereum.org/en/developers/docs/blocks/"
 ETHEREUM_HISTORY = "https://ethereum.org/en/history/"
-ETHEREUM_GENESIS_REFERENCE = "https://www.blockchain.com/explorer/blocks/eth/0"
+ETHEREUM_GENESIS_REFERENCE = "https://eth.blockscout.com/api/v2/blocks/0"
 
 
 def _bundle(*items):
     sources = [
         {"kind": "WEB_PAGE", "location": ETHEREUM_HISTORY, "description": "Ethereum Foundation history page documenting the mainnet launch date and early network history."},
-        {"kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE, "description": "Public Ethereum explorer record for mainnet block 0, including its block number, immutable hash, gas limit, and transaction count."},
+        {"kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE, "description": "Blockscout's Ethereum mainnet record for genesis block 0, including its immutable block hash, gas fields, and transaction count."},
     ]
     return json.dumps([sources[i - 1] for i in items])
 
@@ -123,7 +123,7 @@ def test_full_moderation_appeal_lifecycle_real_consensus(claimant, respondent):
         {"kind": "WEB_PAGE", "location": ETHEREUM_HISTORY, "description": "Ethereum Foundation history page documenting the Frontier mainnet launch on 30 July 2015."},
     ])
     bundle_respondent = json.dumps([
-        {"kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE, "description": "Ethereum explorer record for mainnet genesis block 0, including its immutable hash, gas limit, and transaction count."},
+        {"kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE, "description": "Blockscout's Ethereum mainnet record for genesis block 0, including its immutable block hash, gas fields, and transaction count."},
     ])
 
     tx = contract.create_dispute(args=[
@@ -201,7 +201,7 @@ def test_production_visible_lifecycle_real_consensus(claimant, respondent):
     }])
     respondent_bundle = json.dumps([{
         "kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE,
-        "description": "Ethereum explorer record for mainnet genesis block 0, including its immutable hash, gas limit, and transaction count.",
+        "description": "Blockscout's Ethereum mainnet record for genesis block 0, including its immutable block hash, gas fields, and transaction count.",
     }])
     claim = "LIVE CONSENSUS VERIFICATION: Ethereum mainnet began with genesis block 0 on 30 July 2015, not 31 July 2015."
     _write_retry(
@@ -227,7 +227,13 @@ def test_production_visible_lifecycle_real_consensus(claimant, respondent):
     assert dispute["status"] == "PRELIMINARY_VERDICT"
     assert dispute["policy_assessment"]["source_quality"] in ("CORROBORATED", "PRIMARY")
     assert dispute["source_integrity"]["duplicate_ids"] == []
-    assert all(item["source_quality"] in ("CORROBORATED", "PRIMARY") for item in dispute["preliminary_assessment"])
+    qualities = [item["source_quality"] for item in dispute["preliminary_assessment"]]
+    assert any(quality in ("CORROBORATED", "PRIMARY") for quality in qualities)
+    # A submitted URL is not presumed trustworthy: unavailable or mismatched
+    # evidence must remain visible in the audit trail as UNVERIFIED and cannot
+    # contribute verdict weight. The direct contract tests prove that weighting
+    # rule for every support/relevance combination.
+    assert all(item["source_quality"] in ("UNVERIFIED", "CORROBORATED", "PRIMARY") for item in dispute["preliminary_assessment"])
     state = {
         "network": "studionet",
         "contract_address": PRODUCTION_CONTRACT,

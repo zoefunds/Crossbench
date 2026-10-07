@@ -4,7 +4,7 @@
 
 - Only frontend URL: `https://crossbench-app.vercel.app/`.
 - Backend: `https://crossbench-api.fly.dev/`.
-- Current contract: `0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A`.
+- Current contract: `0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6`.
 - Backend contract access remains read-only with no signer/private key.
 - PostgreSQL contract rows are a cache; chain state is authoritative.
 - Backend and frontend contract addresses must always match.

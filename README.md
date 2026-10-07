@@ -13,15 +13,16 @@ accept, evaluate, settle, or withdraw a dispute.
 | Frontend | <https://crossbench-app.vercel.app/> (the only supported frontend URL) |
 | Read-only API | <https://crossbench-api.fly.dev/> |
 | Network | GenLayer StudioNet, chain ID `61999` |
-| Intelligent Contract | `0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A` |
-| Deployment transaction | `0x994141b9b4131b0b1abc1cc38870256bd9acdc87f0a4ef37cdf4460f0e56450d` |
+| Intelligent Contract | `0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6` |
+| Deployment transaction | `0x231b7a38b08d58fed9fb7037960e56a89de74098b03588651e5c5232b143573e` |
 | Contract runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` |
 
-The production contract currently contains two explicitly labelled test
-disputes from the 2026-10-06 cutover verification: `ec-1` reached
-`PRELIMINARY_VERDICT` through real validator consensus and is in its
-genuine 48-hour challenge window; `ec-2` was cancelled and its stake
-withdrawn, exercising the refund-workflow fix end to end.
+The production contract contains one explicitly labelled real-source test
+dispute from the 2026-10-07 cutover. `ec-1` reached `PRELIMINARY_VERDICT`
+through real validator consensus. Its official policy source was classified
+`PRIMARY`; an unavailable explorer reference was retained as `UNVERIFIED`
+and contributed zero verdict weight; duplicate and mutation sets were empty.
+The genuine challenge window closes at `2026-10-09T07:34:50Z`.
 
 ## Repository
 
