@@ -46,6 +46,9 @@ source is required instead.
 
 `RELEVANCE`: `LOW`, `MEDIUM`, `HIGH`.
 
+`SOURCE_QUALITY`: `UNVERIFIED`, `CORROBORATED`, `PRIMARY`. Unverified
+evidence is retained in the audit record but contributes no verdict weight.
+
 `VERDICTS` (aggregate verdict code): `CLAIMANT`, `RESPONDENT`,
 `PARTIAL_CLAIMANT`, `PARTIAL_RESPONDENT`, `INCONCLUSIVE`.
 
@@ -92,8 +95,11 @@ can never be replaced, only added to later via challenge evidence. Stake
 is `gl.message.value`, must be in `[MIN_STAKE, MAX_STAKE]`. Returns the new
 dispute ID (`"ec-<n>"`, sequential). `bundle_json` is a JSON array of up to
 `MAX_ITEMS` `{kind, location, description}` objects (`kind` is `WEB_PAGE`
-or `ONCHAIN_REF`). Every `location`, including an on-chain explorer/API
-reference, must be an independently retrievable public HTTPS URL.
+or `ONCHAIN_REF`). The policy reference and every `location`, including an
+on-chain explorer/API reference, must be independently retrievable public
+HTTPS URLs. Canonically identical evidence URLs (ignoring host case, default
+HTTPS port, trailing slash, and fragments) are rejected within and across all
+parties' original and challenge bundles.
 
 ### `accept_dispute(dispute_id)` (payable)
 Respondent counter-stakes. `gl.message.value` must **exactly** equal the
@@ -124,7 +130,9 @@ deliberately a separate call from `submit_evidence` rather than an
 auto-triggered follow-up, so the payable evidence-submission write stays
 cheap and predictable and the potentially-slow consensus round is its own
 transaction. Records the per-item content fingerprints into
-`evidence_fingerprints` (see Source integrity, below). If the underlying
+`evidence_fingerprints`, the policy provenance result into
+`policy_assessment`, and content aliases into
+`source_integrity.duplicate_ids` (see Source integrity, below). If the underlying
 consensus call raises (validators disagreed, an LLM formatting fault),
 the error is caught, `eval_attempts` is incremented and persisted, and a
 `[CONSENSUS_FAILED]` `UserError` is raised - dispute state and status are
@@ -216,18 +224,30 @@ hardcoded marketing counters.
 
 Per-item validator votes are combined into one of the five `VERDICTS`
 codes plus a `payout_bps` split and `claimant_weight`/`respondent_weight`.
-Two consensus-agreement rules worth knowing (both were real bugs found via
-integration testing, see `MEMORY.md`):
+Important aggregation and consensus rules:
 
 - `payout_bps`, `claimant_weight`, and `respondent_weight` are returned as
   **strings**, not raw ints - `genlayer-js` decodes contract dicts in a way
   where a raw int in this position previously crashed as
   `Do not know how to serialize a BigInt` on the frontend.
-- Per-item validator agreement (`_assessments_agree`, used by the
-  underlying Equivalence Principle consensus) requires an **exact** match
-  on both `supports` and payout-critical `relevance`. Free-text
-  `reason_code` is informational and excluded from agreement because prose
-  phrasing is not decision-critical.
+- Each independently fetched source receives a provenance grade. `PRIMARY`
+  means the authoritative publisher/system of record; `CORROBORATED` means a
+  credible independently checkable secondary source; `UNVERIFIED` contributes
+  no payout weight. Moderation claims additionally require a `PRIMARY` policy
+  reference or resolve `INCONCLUSIVE`. `ONCHAIN_REF` items must expose ledger
+  data and identify the relevant chain and transaction/block/contract/account.
+- Content-identical items are deterministically linked with `duplicate_of` and
+  only the first contributes weight, preventing mirrored URLs from amplifying a
+  party's case.
+- `_assessments_agree` uses bounded semantic compatibility rather than exact
+  categorical equality: adjacent relevance/provenance grades and
+  `NEITHER`-versus-one-side uncertainty are accepted, while opposing party
+  support, `PRIMARY`-versus-`UNVERIFIED`, different content fingerprints, or a
+  different duplicate mapping are rejected. On-chain references additionally
+  require every validator to reject `UNVERIFIED`, while moderation policy
+  references require every validator to classify the policy as `PRIMARY`.
+  Free-text `reason_code` remains
+  informational and excluded from consensus.
 
 ## Security notes baked into the contract
 
@@ -241,8 +261,13 @@ integration testing, see `MEMORY.md`):
 - Every validator independently fetches every evidence source itself; a party's own
   characterization of their evidence is never trusted (see
   `ARCHITECTURE.md`'s trust-boundary section).
-- Unreachable sources are deterministically forced to `NEITHER`/`LOW`, and
+- Unreachable sources are deterministically forced to
+  `UNVERIFIED`/`NEITHER`/`LOW`, and
   duplicate or incomplete assessment item sets are rejected.
+- **Duplicate resistance**: canonical URL duplicates are rejected at every
+  submission boundary. Different URLs returning identical fetched content are
+  recorded in `source_integrity.duplicate_ids`, linked by `duplicate_of`, and
+  excluded from aggregate weight after the first occurrence.
 - **Source-authenticity consensus**: each validator's independent fetch is
   fingerprinted (`_fingerprint`, SHA-256 truncated to 16 hex chars) and the
   fingerprint is now part of what `_assessments_agree` requires to match.

@@ -6,6 +6,12 @@ export interface EvidenceItem {
   description: string;
 }
 
+const BLOCKED_SOURCE_HOSTS = new Set([
+  "bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd", "buff.ly",
+  "rebrand.ly", "cutt.ly", "shorturl.at", "rb.gy", "tiny.cc", "pastebin.com",
+  "paste.ee", "hastebin.com", "ghostbin.com",
+]);
+
 function isInternalIpv4(hostname: string): boolean {
   const parts = hostname.split(".");
   if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) return false;
@@ -28,12 +34,11 @@ function isInternalIpv6(hostname: string): boolean {
   return host === "::" || host === "::1" || host.startsWith("fc") || host.startsWith("fd") || /^fe[89ab]/.test(host);
 }
 
-export function isValidEvidenceItem(item: EvidenceItem): boolean {
-  if (item.location.length > 800) return false;
+export function isValidPublicSourceUrl(value: string): boolean {
+  if (value.length < 8 || value.length > 800) return false;
   try {
-    const url = new URL(item.location);
+    const url = new URL(value);
     const hostname = url.hostname.toLowerCase();
-    const descriptionLength = item.description.trim().length;
     return (
       url.protocol === "https:" &&
       !url.username &&
@@ -41,14 +46,30 @@ export function isValidEvidenceItem(item: EvidenceItem): boolean {
       !!hostname &&
       hostname !== "localhost" &&
       !hostname.endsWith(".local") &&
+      ![...BLOCKED_SOURCE_HOSTS].some((blocked) => hostname === blocked || hostname.endsWith(`.${blocked}`)) &&
       !isInternalIpv4(hostname) &&
-      !isInternalIpv6(hostname) &&
-      descriptionLength >= 8 &&
-      descriptionLength <= 600
+      !isInternalIpv6(hostname)
     );
   } catch {
     return false;
   }
+}
+
+export function canonicalEvidenceUrl(value: string): string | null {
+  if (!isValidPublicSourceUrl(value)) return null;
+  const url = new URL(value);
+  const path = url.pathname === "/" ? "/" : url.pathname.replace(/\/+$/, "") || "/";
+  return `https://${url.hostname.toLowerCase()}${url.port && url.port !== "443" ? `:${url.port}` : ""}${path}${url.search}`;
+}
+
+export function hasDuplicateEvidenceLocations(items: EvidenceItem[]): boolean {
+  const locations = items.map((item) => canonicalEvidenceUrl(item.location));
+  return locations.some((location, index) => location !== null && locations.indexOf(location) !== index);
+}
+
+export function isValidEvidenceItem(item: EvidenceItem): boolean {
+  const descriptionLength = item.description.trim().length;
+  return isValidPublicSourceUrl(item.location) && descriptionLength >= 8 && descriptionLength <= 600;
 }
 
 export function EvidenceBundleEditor({
@@ -110,6 +131,9 @@ export function EvidenceBundleEditor({
           />
         </div>
       ))}
+      {hasDuplicateEvidenceLocations(items) && (
+        <p className="text-xs text-error">Duplicate source URLs are not allowed, including aliases that differ only by host case, fragment, default HTTPS port, or trailing slash.</p>
+      )}
       {items.length < max && (
         <button
           type="button"

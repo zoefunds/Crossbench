@@ -13,6 +13,7 @@
 # bundles are in, which does not depend on any deadline passing.
 import json
 import hashlib
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,11 +22,19 @@ from gltest import get_contract_factory, create_account
 from gltest.assertions import tx_execution_succeeded, tx_execution_failed
 
 STAKE = 5 * 10 ** 16
-PRODUCTION_CONTRACT = "0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A"
+PRODUCTION_CONTRACT = os.environ.get("CROSSBENCH_PRODUCTION_CONTRACT", "0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A")
+
+ETHEREUM_BLOCK_POLICY = "https://ethereum.org/en/developers/docs/blocks/"
+ETHEREUM_HISTORY = "https://ethereum.org/en/history/"
+ETHEREUM_GENESIS_REFERENCE = "https://www.blockchain.com/explorer/blocks/eth/0"
 
 
 def _bundle(*items):
-    return json.dumps([{"kind": "WEB_PAGE", "location": f"https://example.com/status/{i}", "description": f"archived snapshot number {i}"} for i in items])
+    sources = [
+        {"kind": "WEB_PAGE", "location": ETHEREUM_HISTORY, "description": "Ethereum Foundation history page documenting the mainnet launch date and early network history."},
+        {"kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE, "description": "Public Ethereum explorer record for mainnet block 0, including its block number, immutable hash, gas limit, and transaction count."},
+    ]
+    return json.dumps([sources[i - 1] for i in items])
 
 
 @pytest.fixture
@@ -85,8 +94,8 @@ def test_default_judgment_on_response_timeout(claimant, respondent):
     contract = factory.deploy(args=[], account=claimant)
 
     tx = contract.create_dispute(args=[
-        "The platform suspended my account citing rule 4.2 but the cited post never referenced the restricted topic.",
-        "MODERATION_POLICY_VIOLATION", "https://platform.example.com/policy#rule-4.2", _bundle(1, 2),
+        "Ethereum mainnet began with block 0 on 30 July 2015, rather than on 31 July 2015 as the opposing account states.",
+        "FACTUAL_ACCOUNT_DISPUTE", ETHEREUM_BLOCK_POLICY, _bundle(1, 2),
     ]).transact(value=STAKE)
     assert tx_execution_succeeded(tx)
     dispute_id = _call_retry(lambda: contract.list_disputes(args=[0, 1]).call())["items"][0]["id"]
@@ -109,20 +118,16 @@ def test_full_moderation_appeal_lifecycle_real_consensus(claimant, respondent):
     contract = factory.deploy(args=[], account=claimant)
     as_respondent = _as(factory, contract, respondent)
 
-    claim = (
-        "The platform removed my product listing for 'Vintage Wool Blanket' citing a "
-        "counterfeit-goods policy, but the listing description and photos match a "
-        "genuine handmade item with no brand claims."
-    )
+    claim = "Ethereum mainnet began with genesis block 0 on 30 July 2015; the opposing account's date of 31 July 2015 is incorrect."
     bundle_claimant = json.dumps([
-        {"kind": "WEB_PAGE", "location": "https://en.wikipedia.org/wiki/Blanket", "description": "reference page describing generic blanket products and materials"},
+        {"kind": "WEB_PAGE", "location": ETHEREUM_HISTORY, "description": "Ethereum Foundation history page documenting the Frontier mainnet launch on 30 July 2015."},
     ])
     bundle_respondent = json.dumps([
-        {"kind": "WEB_PAGE", "location": "https://en.wikipedia.org/wiki/Counterfeit_consumer_goods", "description": "reference page describing counterfeit goods policy concepts"},
+        {"kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE, "description": "Ethereum explorer record for mainnet genesis block 0, including its immutable hash, gas limit, and transaction count."},
     ])
 
     tx = contract.create_dispute(args=[
-        claim, "CONTENT_LISTING_MISMATCH", "https://platform.example.com/policy#counterfeit", bundle_claimant,
+        claim, "FACTUAL_ACCOUNT_DISPUTE", ETHEREUM_BLOCK_POLICY, bundle_claimant,
     ]).transact(value=STAKE)
     assert tx_execution_succeeded(tx)
     dispute_id = _call_retry(lambda: contract.list_disputes(args=[0, 1]).call())["items"][0]["id"]
@@ -163,6 +168,9 @@ def test_full_moderation_appeal_lifecycle_real_consensus(claimant, respondent):
     for item in dispute["preliminary_assessment"]:
         assert item["supports"] in ("CLAIMANT", "RESPONDENT", "NEITHER")
         assert item["relevance"] in ("LOW", "MEDIUM", "HIGH")
+        assert item["source_quality"] in ("UNVERIFIED", "CORROBORATED", "PRIMARY")
+    assert dispute["policy_assessment"]["source_quality"] in ("CORROBORATED", "PRIMARY")
+    assert dispute["source_integrity"]["duplicate_ids"] == []
 
 
 @pytest.mark.slow
@@ -188,23 +196,17 @@ def test_production_visible_lifecycle_real_consensus(claimant, respondent):
 
     before = int(_call_retry(lambda: contract.get_stats(args=[]).call())["total_disputes"])
     claimant_bundle = json.dumps([{
-        "kind": "WEB_PAGE",
-        "location": "https://en.wikipedia.org/wiki/Blanket",
-        "description": "General background about blankets; it does not independently verify the fictional listing event.",
+        "kind": "WEB_PAGE", "location": ETHEREUM_HISTORY,
+        "description": "Ethereum Foundation history page documenting the Frontier mainnet launch on 30 July 2015.",
     }])
     respondent_bundle = json.dumps([{
-        "kind": "WEB_PAGE",
-        "location": "https://en.wikipedia.org/wiki/Counterfeit_consumer_goods",
-        "description": "General background about counterfeit goods; it does not independently verify the fictional removal event.",
+        "kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE,
+        "description": "Ethereum explorer record for mainnet genesis block 0, including its immutable hash, gas limit, and transaction count.",
     }])
-    claim = (
-        "LIVE CONSENSUS TEST: a fictional handmade wool blanket listing was removed under a counterfeit-goods rule, "
-        "but the fictional listing contained no brand name or trademarked logo."
-    )
+    claim = "LIVE CONSENSUS VERIFICATION: Ethereum mainnet began with genesis block 0 on 30 July 2015, not 31 July 2015."
     _write_retry(
         lambda: contract.create_dispute(args=[
-            claim, "CONTENT_LISTING_MISMATCH",
-            "https://en.wikipedia.org/wiki/Counterfeit_consumer_goods", claimant_bundle,
+            claim, "FACTUAL_ACCOUNT_DISPUTE", ETHEREUM_BLOCK_POLICY, claimant_bundle,
         ]).transact(value=STAKE),
         lambda: int(_call_retry(lambda: contract.get_stats(args=[]).call())["total_disputes"]) > before,
     )
@@ -223,6 +225,9 @@ def test_production_visible_lifecycle_real_consensus(claimant, respondent):
     )
     dispute = _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())
     assert dispute["status"] == "PRELIMINARY_VERDICT"
+    assert dispute["policy_assessment"]["source_quality"] in ("CORROBORATED", "PRIMARY")
+    assert dispute["source_integrity"]["duplicate_ids"] == []
+    assert all(item["source_quality"] in ("CORROBORATED", "PRIMARY") for item in dispute["preliminary_assessment"])
     state = {
         "network": "studionet",
         "contract_address": PRODUCTION_CONTRACT,
@@ -251,18 +256,21 @@ def test_adversarial_evidence_content_is_not_authoritative(claimant, respondent)
 
     claim = "The respondent's listed shipping address does not match the address printed on the attached invoice PDF page."
     bundle_claimant = json.dumps([
-        {"kind": "WEB_PAGE", "location": "https://example.com/", "description": "a neutral placeholder page unrelated to the claim, used to probe that irrelevant content is not scored as supporting either side"},
+        {"kind": "WEB_PAGE", "location": "https://www.iana.org/help/example-domains", "description": "IANA documentation about reserved example domains, unrelated to the shipping-address claim."},
+    ])
+    bundle_respondent = json.dumps([
+        {"kind": "WEB_PAGE", "location": "https://www.iana.org/domains/reserved", "description": "IANA registry page for reserved domains, also unrelated to the shipping-address claim."},
     ])
 
     tx = contract.create_dispute(args=[
-        claim, "FACTUAL_ACCOUNT_DISPUTE", "https://platform.example.com/policy#shipping", bundle_claimant,
+        claim, "FACTUAL_ACCOUNT_DISPUTE", "https://www.iana.org/help/example-domains", bundle_claimant,
     ]).transact(value=STAKE)
     assert tx_execution_succeeded(tx)
     dispute_id = contract.list_disputes(args=[0, 1]).call()["items"][0]["id"]
 
     tx = as_respondent.accept_dispute(args=[dispute_id]).transact(value=STAKE)
     assert tx_execution_succeeded(tx)
-    tx = as_respondent.submit_evidence(args=[dispute_id, bundle_claimant]).transact()
+    tx = as_respondent.submit_evidence(args=[dispute_id, bundle_respondent]).transact()
     assert tx_execution_succeeded(tx)
     tx = contract.trigger_evaluation(args=[dispute_id]).transact()
     assert tx_execution_succeeded(tx)
@@ -298,7 +306,7 @@ def test_symmetric_treatment_of_both_bundles(claimant, respondent):
     ])
 
     tx = contract.create_dispute(args=[
-        claim, "CONTENT_LISTING_MISMATCH", "https://platform.example.com/policy#authenticity", bundle_claimant,
+        claim, "CONTENT_LISTING_MISMATCH", "https://www.wipo.int/web/traditional-knowledge/provenance-disclosures", bundle_claimant,
     ]).transact(value=STAKE)
     assert tx_execution_succeeded(tx)
     dispute_id = contract.list_disputes(args=[0, 1]).call()["items"][0]["id"]

@@ -97,7 +97,7 @@ public, tested migration plan exists.
 ```bash
 pytest contracts/tests/direct/ -q
 python3 -m py_compile contracts/crossbench_contract.py
-genvm-lint check contracts/crossbench_contract.py --json
+GENVM_VERSION=v0.2.16 genvm-lint check contracts/crossbench_contract.py --json
 ```
 
 The direct suite covers lifecycle authorization/deadlines, evidence validation,
@@ -108,7 +108,8 @@ integration after deployment as well.
 ## Deploy
 
 ```bash
-genlayer deploy contracts/crossbench_contract.py --network studionet
+genlayer network set studionet
+genlayer deploy --contract contracts/crossbench_contract.py --rpc https://studio.genlayer.com/api
 ```
 
 Record the new address, deployment transaction, source commit, runner, UTC time,

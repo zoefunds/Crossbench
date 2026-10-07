@@ -9,15 +9,17 @@ def bundle(*items):
 
 
 def mock_assessment(direct_vm, mapping):
-    items_json = json.dumps({"items": [
-        {"id": item_id, "supports": supports, "relevance": relevance, "reason_code": "TEST"}
+    items_json = json.dumps({"policy": {"source_quality": "PRIMARY", "reason_code": "OFFICIAL_POLICY"}, "items": [
+        {"id": item_id, "supports": supports, "relevance": relevance, "source_quality": "PRIMARY", "reason_code": "TEST"}
         for item_id, (supports, relevance) in mapping.items()
     ]})
     direct_vm.mock_llm(r".*EVIDENCE_COURT_ASSESSMENT_V1.*", items_json)
 
 
 def mock_pages_ok(direct_vm):
-    direct_vm.mock_web(r"https://example\.com/.*", {"status": 200, "body": "page content"})
+    for item in range(1, 101):
+        direct_vm.mock_web(rf"https://example\.com/{item}$", {"status": 200, "body": f"distinct page content {item}"})
+    direct_vm.mock_web(r"https://platform\.example\.com/policy.*", {"status": 200, "body": "official platform policy rule 4.2"})
 
 
 def addr_hex(value):

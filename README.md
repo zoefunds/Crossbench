@@ -50,8 +50,9 @@ Authoritative documentation:
 3. The respondent pins one to three evidence items before the 72-hour evidence
    deadline. The claimant's original bundle was already pinned at creation.
 4. Anyone calls `trigger_evaluation` when both bundles are ready (or after the
-   evidence deadline). Every validator independently fetches every public HTTPS
-   source and assesses support and relevance.
+   evidence deadline). Every validator independently fetches the policy and
+   every public HTTPS source, verifies provenance, and assesses support and
+   relevance. Unverified or duplicate material cannot add verdict weight.
 5. The preliminary verdict opens a 48-hour challenge window. Each party may add
    up to two immutable evidence items once.
 6. After the deadline, anyone may call `finalize_dispute`. Challenge evidence,
@@ -66,13 +67,14 @@ Authoritative documentation:
   validator consensus, payout math, credits, and withdrawals live in the
   contract.
 - The Fly backend has no signer or private key and only performs contract reads.
-- Evidence must be a public HTTPS URL. Credentials, localhost/`.local`, private,
+- Policy and evidence references must be public HTTPS URLs. Credentials, localhost/`.local`, private,
   loopback, link-local, reserved, and unspecified literal IPs are rejected.
   DNS-resolution-time private-address blocking remains the responsibility of the
   GenLayer web-fetch sandbox.
-- `supports` and payout-critical `relevance` must agree exactly between leader
-  and validators. `reason_code` is leader-authored explanatory context and is
-  explicitly excluded from settlement consensus.
+- Validators compare judgments with bounded compatibility: adjacent relevance
+  and provenance grades are tolerated, but opposing support, materially
+  conflicting provenance, fetched-content drift, and inconsistent duplicate
+  mappings fail consensus. `reason_code` is explanatory context only.
 - The UI reports success only after `FINALIZED` and a successful leader receipt;
   `ACCEPTED` is informational.
 
@@ -84,6 +86,7 @@ used by this repository.
 ```bash
 # Contract
 pytest contracts/tests/direct/ -q
+GENVM_VERSION=v0.2.16 genvm-lint check contracts/crossbench_contract.py --json
 
 # Backend
 cd backend

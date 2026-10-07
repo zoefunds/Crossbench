@@ -19,6 +19,14 @@ def test_create_dispute_rejects_bad_category(direct_vm, direct_deploy, direct_al
         contract.create_dispute("x" * 50, "NOT_A_CATEGORY", "https://x.example.com/policy", bundle(1))
 
 
+def test_policy_reference_must_be_public_https(direct_vm, direct_deploy, direct_alice):
+    contract = direct_deploy(CONTRACT)
+    direct_vm.sender = direct_alice
+    direct_vm.value = STAKE
+    with direct_vm.expect_revert("policy reference must use https"):
+        contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", "platform policy rule 4.2", bundle(1))
+
+
 def test_create_dispute_rejects_stake_out_of_range(direct_vm, direct_deploy, direct_alice):
     contract = direct_deploy(CONTRACT)
     direct_vm.sender = direct_alice

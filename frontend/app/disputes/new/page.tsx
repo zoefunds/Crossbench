@@ -6,7 +6,7 @@ import { parseEther } from "viem";
 import { useAccount } from "wagmi";
 import { useGenLayerClient, CONTRACT_ADDRESS, isContractConfigured } from "@/lib/genlayer";
 import { runWrite, type TxProgress } from "@/lib/tx";
-import { EvidenceBundleEditor, isValidEvidenceItem, type EvidenceItem } from "@/components/EvidenceBundleEditor";
+import { EvidenceBundleEditor, hasDuplicateEvidenceLocations, isValidEvidenceItem, isValidPublicSourceUrl, type EvidenceItem } from "@/components/EvidenceBundleEditor";
 import { TxStatus } from "@/components/TxStatus";
 import { DISPUTE_EXAMPLES } from "@/lib/exampleData";
 
@@ -43,8 +43,8 @@ export default function NewDisputePage() {
   }
 
   const claimValid = claim.trim().length >= 40 && claim.trim().length <= 1800;
-  const policyRefValid = policyRef.trim().length >= 8 && policyRef.trim().length <= 800;
-  const itemsValid = items.length >= 1 && items.every(isValidEvidenceItem);
+  const policyRefValid = isValidPublicSourceUrl(policyRef.trim());
+  const itemsValid = items.length >= 1 && items.every(isValidEvidenceItem) && !hasDuplicateEvidenceLocations(items);
   const stakeNumber = Number(stake);
   const stakeValid = Number.isFinite(stakeNumber) && stakeNumber >= 0.001 && stakeNumber <= 10;
   const canSubmit = claimValid && policyRefValid && itemsValid && stakeValid && isConnected && !!client && isContractConfigured;
@@ -144,6 +144,7 @@ export default function NewDisputePage() {
             maxLength={800}
             className="data-mono w-full rounded border border-border-ec bg-navy-elevated px-3 py-2 text-sm text-text-ec placeholder:text-text-dim/60"
           />
+          {!policyRefValid && policyRef.length > 0 && <p className="mt-1 text-xs text-error">Use a direct, public HTTPS URL to the authoritative policy or agreement.</p>}
         </div>
 
         <div>

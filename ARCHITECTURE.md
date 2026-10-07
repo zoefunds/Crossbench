@@ -31,10 +31,11 @@ owner-only withdrawal.
 
 Every validator fetches every evidence source inside its own execution. Neither
 the backend nor either party supplies fetched content, scores, or verdicts.
-Unreachable sources normalize to `NEITHER`/`LOW`. `reason_code` is explanatory
+Unreachable sources normalize to `UNVERIFIED`/`NEITHER`/`LOW`; unverified and
+duplicate content contributes no verdict weight. `reason_code` is explanatory
 leader output, excluded from agreement and money movement.
 
-Four additional controls harden this boundary (see `docs/CONTRACT_SPEC.md` for
+Seven additional controls harden this boundary (see `docs/CONTRACT_SPEC.md` for
 exact mechanics):
 
 - **Category-aware adjudication**: `claim_category` selects a distinct rubric
@@ -45,6 +46,16 @@ exact mechanics):
   validators must agree on - a source that renders differently between two
   independent fetches fails consensus outright instead of being silently
   trusted.
+- **Provenance verification**: validators grade the policy and each item as
+  primary, corroborated, or unverified using stricter rules for official policy
+  and on-chain system-of-record data. Unverified items have zero weight, and a
+  moderation claim without a primary policy source is inconclusive.
+- **Duplicate resistance**: canonical URL aliases are rejected on submission;
+  different URLs with identical fetched content are recorded and counted once.
+- **Tolerance without ambiguity**: independent validators may differ by one
+  adjacent relevance/provenance grade or between one-sided support and
+  uncertainty, but direct party conflicts and material provenance conflicts
+  fail consensus.
 - **Mutable-evidence detection**: when challenge evidence triggers a second
   consensus run, every originally-judged item's fingerprint is compared
   against the one recorded at the preliminary verdict; any drift is recorded

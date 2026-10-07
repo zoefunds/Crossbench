@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useGenLayerClient, CONTRACT_ADDRESS } from "@/lib/genlayer";
 import { runWrite, type TxProgress } from "@/lib/tx";
-import { EvidenceBundleEditor, isValidEvidenceItem, type EvidenceItem } from "@/components/EvidenceBundleEditor";
+import { EvidenceBundleEditor, hasDuplicateEvidenceLocations, isValidEvidenceItem, type EvidenceItem } from "@/components/EvidenceBundleEditor";
 import { TxStatus } from "@/components/TxStatus";
 import { DISPUTE_EXAMPLES } from "@/lib/exampleData";
 
@@ -129,7 +129,7 @@ export function DisputeActions(props: Props) {
           </div>
           <EvidenceBundleEditor items={items} onChange={setItems} max={3} />
           <button
-            disabled={busy || completedActions.has("submit_evidence") || !items.every(isValidEvidenceItem)}
+            disabled={busy || completedActions.has("submit_evidence") || !items.every(isValidEvidenceItem) || hasDuplicateEvidenceLocations(items)}
             onClick={() => act("submit_evidence", [props.disputeId, JSON.stringify(items)])}
             className="mt-4 rounded px-5 py-2.5 font-semibold text-navy bg-cyan disabled:opacity-40"
           >
@@ -159,7 +159,7 @@ export function DisputeActions(props: Props) {
           <p className="mb-4 text-sm text-text-dim">Additive only - up to 2 more items. Cannot replace your original bundle.</p>
           <EvidenceBundleEditor items={challengeItems} onChange={setChallengeItems} max={2} />
           <button
-            disabled={busy || completedActions.has(`challenge:${address}`) || !challengeItems.every(isValidEvidenceItem)}
+            disabled={busy || completedActions.has(`challenge:${address}`) || !challengeItems.every(isValidEvidenceItem) || hasDuplicateEvidenceLocations(challengeItems)}
             onClick={() => act("submit_challenge_evidence", [props.disputeId, JSON.stringify(challengeItems)], undefined, `challenge:${address}`)}
             className="mt-4 rounded px-5 py-2.5 font-semibold text-navy bg-cyan disabled:opacity-40"
           >

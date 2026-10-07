@@ -26,7 +26,7 @@ def test_shortener_and_paste_hosts_rejected_as_evidence(direct_vm, direct_deploy
     direct_vm.value = STAKE
     bad_bundle = json.dumps([{"kind": "WEB_PAGE", "location": "https://bit.ly/abc123", "description": "shortened link to the policy page"}])
     with direct_vm.expect_revert("link shortener"):
-        contract.create_dispute("x" * 40, "MODERATION_POLICY_VIOLATION", "y" * 8, bad_bundle)
+        contract.create_dispute("x" * 40, "MODERATION_POLICY_VIOLATION", "https://platform.example.com/policy", bad_bundle)
 
 
 def test_paste_subdomain_also_rejected(direct_vm, direct_deploy, direct_alice):
@@ -35,7 +35,97 @@ def test_paste_subdomain_also_rejected(direct_vm, direct_deploy, direct_alice):
     direct_vm.value = STAKE
     bad_bundle = json.dumps([{"kind": "ONCHAIN_REF", "location": "https://mirror.pastebin.com/raw/abc", "description": "mirrored explorer dump"}])
     with direct_vm.expect_revert("link shortener"):
-        contract.create_dispute("x" * 40, "MODERATION_POLICY_VIOLATION", "y" * 8, bad_bundle)
+        contract.create_dispute("x" * 40, "MODERATION_POLICY_VIOLATION", "https://platform.example.com/policy", bad_bundle)
+
+
+def test_duplicate_canonical_urls_rejected_within_and_across_bundles(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    direct_vm.sender = direct_alice
+    direct_vm.value = STAKE
+    duplicate_bundle = json.dumps([
+        {"kind": "WEB_PAGE", "location": "https://Example.com/report/#first", "description": "first copy of the report"},
+        {"kind": "WEB_PAGE", "location": "https://example.com/report", "description": "same report under a fragment"},
+    ])
+    with direct_vm.expect_revert("duplicate evidence source"):
+        contract.create_dispute("x" * 40, "FACTUAL_ACCOUNT_DISPUTE", "https://platform.example.com/policy", duplicate_bundle)
+
+    dispute_id = _create(direct_vm, contract, direct_alice)
+    direct_vm.sender = direct_bob
+    direct_vm.value = STAKE
+    contract.accept_dispute(dispute_id)
+    cross_party_duplicate = json.dumps([
+        {"kind": "WEB_PAGE", "location": "https://EXAMPLE.com:443/1/#copy", "description": "claimant source resubmitted by respondent"},
+    ])
+    with direct_vm.expect_revert("duplicate evidence source"):
+        contract.submit_evidence(dispute_id, cross_party_duplicate)
+
+
+def test_content_duplicates_are_recorded_and_do_not_double_count(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    dispute_id = _create(direct_vm, contract, direct_alice)
+    direct_vm.sender = direct_bob
+    direct_vm.value = STAKE
+    contract.accept_dispute(dispute_id)
+
+    direct_vm.mock_web(r"https://example\.com/[12]$", {"status": 200, "body": "same underlying report"})
+    direct_vm.mock_web(r"https://example\.com/9$", {"status": 200, "body": "independent response"})
+    direct_vm.mock_web(r"https://platform\.example\.com/policy.*", {"status": 200, "body": "official policy"})
+    mock_assessment(direct_vm, {"A1": ("CLAIMANT", "HIGH"), "A2": ("CLAIMANT", "HIGH"), "B1": ("RESPONDENT", "HIGH")})
+    direct_vm.sender = direct_bob
+    contract.submit_evidence(dispute_id, bundle(9))
+    contract.trigger_evaluation(dispute_id)
+
+    dispute = contract.get_dispute(dispute_id)
+    assert dispute["source_integrity"]["duplicate_ids"] == ["A2"]
+    assert dispute["preliminary_assessment"][1]["duplicate_of"] == "A1"
+    assert dispute["preliminary_verdict"]["claimant_weight"] == "3"
+    assert dispute["preliminary_verdict"]["respondent_weight"] == "3"
+    assert dispute["preliminary_verdict"]["verdict_code"] == "INCONCLUSIVE"
+
+
+def test_unverified_policy_and_evidence_cannot_drive_payout(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    dispute_id = _create(direct_vm, contract, direct_alice)
+    direct_vm.sender = direct_bob
+    direct_vm.value = STAKE
+    contract.accept_dispute(dispute_id)
+    mock_pages_ok(direct_vm)
+    response = {"policy": {"source_quality": "UNVERIFIED", "reason_code": "NOT_OFFICIAL"}, "items": [
+        {"id": "A1", "supports": "CLAIMANT", "relevance": "HIGH", "source_quality": "UNVERIFIED", "reason_code": "PARTY_AUTHORED"},
+        {"id": "A2", "supports": "CLAIMANT", "relevance": "HIGH", "source_quality": "PRIMARY", "reason_code": "PRIMARY"},
+        {"id": "B1", "supports": "NEITHER", "relevance": "LOW", "source_quality": "PRIMARY", "reason_code": "PRIMARY"},
+    ]}
+    direct_vm.mock_llm(r".*EVIDENCE_COURT_ASSESSMENT_V1.*", json.dumps(response))
+    direct_vm.sender = direct_bob
+    contract.submit_evidence(dispute_id, bundle(9))
+    contract.trigger_evaluation(dispute_id)
+
+    dispute = contract.get_dispute(dispute_id)
+    assert dispute["policy_assessment"]["source_quality"] == "UNVERIFIED"
+    assert dispute["preliminary_verdict"]["verdict_code"] == "INCONCLUSIVE"
+    assert dispute["preliminary_verdict"]["claimant_weight"] == "0"
+
+
+def test_validator_comparison_allows_bounded_judgment_variance_but_rejects_conflicts(direct_vm, direct_deploy):
+    direct_deploy(CONTRACT)
+    module = sys.modules["_contract_crossbench_contract"]
+    base = {"policy": {"source_quality": "PRIMARY", "content_hash": "policy"}, "items": [
+        {"id": "A1", "supports": "CLAIMANT", "relevance": "MEDIUM", "source_quality": "CORROBORATED", "content_hash": "content"},
+    ]}
+    adjacent = {"policy": {"source_quality": "CORROBORATED", "content_hash": "policy"}, "items": [
+        {"id": "A1", "supports": "NEITHER", "relevance": "HIGH", "source_quality": "PRIMARY", "content_hash": "content"},
+    ]}
+    conflicting = {"policy": {"source_quality": "PRIMARY", "content_hash": "policy"}, "items": [
+        {"id": "A1", "supports": "RESPONDENT", "relevance": "MEDIUM", "source_quality": "CORROBORATED", "content_hash": "content"},
+    ]}
+    assert module._assessments_agree(base, adjacent) is True
+    assert module._assessments_agree(base, conflicting) is False
+
+    unverified = {"policy": {"source_quality": "CORROBORATED", "content_hash": "policy"}, "items": [
+        {"id": "A1", "supports": "NEITHER", "relevance": "MEDIUM", "source_quality": "UNVERIFIED", "content_hash": "content"},
+    ]}
+    assert module._assessments_agree(base, unverified, ["A1"]) is False
+    assert module._assessments_agree(base, adjacent, [], require_primary_policy=True) is False
 
 
 def test_preliminary_assessment_carries_content_fingerprints(direct_vm, direct_deploy, direct_alice, direct_bob):
@@ -56,10 +146,9 @@ def test_preliminary_assessment_carries_content_fingerprints(direct_vm, direct_d
     for item in dispute["preliminary_assessment"]:
         assert isinstance(item["content_hash"], str) and len(item["content_hash"]) == 16
         assert item["content_hash"] == dispute["evidence_fingerprints"][item["id"]]
-    # Same mocked page content for every item -> identical fingerprint,
-    # proving the hash is a real function of fetched content, not a
-    # per-item nonce or the id itself.
-    assert len(set(dispute["evidence_fingerprints"].values())) == 1
+    # Distinct fetched pages receive distinct fingerprints; the dedicated
+    # duplicate-content test covers the matching-hash path.
+    assert len(set(dispute["evidence_fingerprints"].values())) == 3
 
 
 def test_source_integrity_flags_evidence_mutated_after_preliminary_verdict(direct_vm, direct_deploy, direct_alice, direct_bob):
@@ -76,8 +165,8 @@ def test_source_integrity_flags_evidence_mutated_after_preliminary_verdict(direc
     # requires CB1 to be absent, since both assessment rounds share one LLM
     # mock queue and the first registered match wins regardless of which
     # round is actually running (see the second registration below).
-    preliminary_items_json = json.dumps({"items": [
-        {"id": item_id, "supports": supports, "relevance": relevance, "reason_code": "TEST"}
+    preliminary_items_json = json.dumps({"policy": {"source_quality": "PRIMARY", "reason_code": "OFFICIAL_POLICY"}, "items": [
+        {"id": item_id, "supports": supports, "relevance": relevance, "source_quality": "PRIMARY", "reason_code": "TEST"}
         for item_id, (supports, relevance) in {
             "A1": ("CLAIMANT", "HIGH"), "A2": ("CLAIMANT", "HIGH"), "B1": ("NEITHER", "LOW"),
         }.items()
@@ -98,8 +187,8 @@ def test_source_integrity_flags_evidence_mutated_after_preliminary_verdict(direc
     # override is inserted at the front rather than appended.
     import re as _re
     direct_vm._web_mocks.insert(0, (_re.compile(r"https://example\.com/1$"), {"status": 200, "body": "edited page content, swapped after the verdict"}))
-    final_items_json = json.dumps({"items": [
-        {"id": item_id, "supports": supports, "relevance": relevance, "reason_code": "TEST"}
+    final_items_json = json.dumps({"policy": {"source_quality": "PRIMARY", "reason_code": "OFFICIAL_POLICY"}, "items": [
+        {"id": item_id, "supports": supports, "relevance": relevance, "source_quality": "PRIMARY", "reason_code": "TEST"}
         for item_id, (supports, relevance) in {
             "A1": ("CLAIMANT", "HIGH"), "A2": ("CLAIMANT", "HIGH"), "B1": ("NEITHER", "LOW"),
             "CB1": ("RESPONDENT", "LOW"),

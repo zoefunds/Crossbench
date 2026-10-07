@@ -24,9 +24,10 @@ interface DisputeData {
   bundle_respondent: { kind: string; location: string; description: string }[];
   bundle_respondent_submitted: boolean;
   preliminary_verdict: { verdict_code: string; payout_bps: number; claimant_weight: number; respondent_weight: number } | null;
-  preliminary_assessment: { id: string; supports: string; relevance: string; reason_code: string }[] | null;
+  preliminary_assessment: { id: string; supports: string; relevance: string; source_quality: string; duplicate_of?: string; reason_code: string }[] | null;
   final_verdict: { verdict_code: string; payout_bps: number; claimant_weight: number; respondent_weight: number } | null;
-  final_assessment: { id: string; supports: string; relevance: string; reason_code: string }[] | null;
+  final_assessment: { id: string; supports: string; relevance: string; source_quality: string; duplicate_of?: string; reason_code: string }[] | null;
+  policy_assessment: { source_quality: string; reason_code: string } | null;
   can_accept: boolean;
   can_claim_timeout: boolean;
   can_submit_evidence: boolean;
@@ -34,7 +35,7 @@ interface DisputeData {
   can_challenge: boolean;
   can_finalize: boolean;
   can_resolve_stalled: boolean;
-  source_integrity: { mutated_ids: string[] } | null;
+  source_integrity: { mutated_ids: string[]; duplicate_ids?: string[] } | null;
 }
 
 function EvidenceBundleList({ title, items }: { title: string; items: { kind: string; location: string; description: string }[] }) {
@@ -102,6 +103,9 @@ export default function DisputeDetailPage({ params }: { params: Promise<{ id: st
       <p className="label-sm mb-2 text-purple">{dispute.claim_category.replaceAll("_", " ")}</p>
       <h1 className="font-headline text-2xl font-semibold text-text-ec">{dispute.claim}</h1>
       <p className="data-mono mt-2 text-sm text-text-dim">Policy reference: {dispute.policy_reference}</p>
+      {dispute.policy_assessment && (
+        <p className="mt-1 text-xs text-text-dim">Policy source quality: {dispute.policy_assessment.source_quality} · {dispute.policy_assessment.reason_code}</p>
+      )}
 
       {dispute.status === "CREATED" && (
         <DeadlineCountdown deadline={dispute.response_deadline} label="Response window closes in" onExpire={() => load(true)} />
@@ -148,6 +152,11 @@ export default function DisputeDetailPage({ params }: { params: Promise<{ id: st
           Source integrity warning: evidence item{dispute.source_integrity.mutated_ids.length > 1 ? "s" : ""}{" "}
           {dispute.source_integrity.mutated_ids.join(", ")} resolved to different content when re-fetched at
           finalization than at the preliminary verdict. The final verdict was computed from the re-fetched content.
+        </div>
+      )}
+      {dispute.source_integrity && (dispute.source_integrity.duplicate_ids?.length ?? 0) > 0 && (
+        <div className="mt-6 glass-card border-purple/40 p-4 text-sm text-text-dim">
+          Duplicate-content evidence {dispute.source_integrity.duplicate_ids!.join(", ")} was retained for auditability but assigned zero verdict weight.
         </div>
       )}
 
