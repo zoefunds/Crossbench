@@ -21,5 +21,11 @@ consensus does not commit the contract's attempted failure counter, so their
 those 0.2 GEN as recoverable unless GenLayer provides a transaction-level
 recovery or changes failed-consensus state semantics.
 
+Production 0.3.1 catches inner consensus exceptions in direct-VM tests, but its
+first real post-cutover assessment still left `eval_attempts=0`, showing that an
+outer StudioNet consensus failure bypasses the contract catch. It does not yet
+provide a network-reliable recovery threshold. All stakes remain attached to
+their immutable deployment addresses.
+
 Always re-read each dispute and credit before broadcasting a write. Never
 repeat a payable setup transaction during recovery.

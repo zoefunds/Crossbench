@@ -13,17 +13,16 @@ accept, evaluate, settle, or withdraw a dispute.
 | Frontend | <https://crossbench-app.vercel.app/> (the only supported frontend URL) |
 | Read-only API | <https://crossbench-api.fly.dev/> |
 | Network | GenLayer StudioNet, chain ID `61999` |
-| Intelligent Contract | `0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6` |
-| Deployment transaction | `0x08ba5e754509bf9bd5d877300bf059aae50abbb88461f1e487349c64d76b3072` |
+| Intelligent Contract | `0x2352A0cBF175F1e69eBc8364A35301570378FF22` |
+| Deployment transaction | `0xea3fee2c375a3cf676f49431a1019332d476d1f356e73f5b7621ab2f5a5e2322` |
 | Contract runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` |
 
-The production contract contains one explicitly labelled real-source test
-dispute from the 2026-10-07 cutover. `ec-1` reached `PRELIMINARY_VERDICT`
-through real validator consensus. The claimant and intended respondent were
-wallet-bound, the Ethereum Foundation policy was classified `PRIMARY`, and the
-respondent's structured Ethereum genesis-block reference was classified
-`CORROBORATED`. Duplicate and mutation sets were empty. The genuine challenge
-window closes at `2026-10-09T08:13:12Z`.
+Production runs version `0.3.1-studionet`, cut over on 2026-10-07 after a
+5/5-validator deployment and a fresh-state accounting check. A subsequent live
+failed-consensus attempt did not persist its counter, so StudioNet's outer-
+failure rollback remains an explicitly disclosed network limitation. The
+previous production lifecycle remains
+immutable at its old address and is inventoried in `docs/ESCROW_RECOVERY.md`.
 
 ## Repository
 
@@ -123,7 +122,7 @@ gltest contracts/tests/integration/test_lifecycle.py \
 The deadline-resume test is idempotent and reads the durable files in `docs/`.
 It skips safely until the recorded challenge deadline has passed.
 
-The current automated baseline is 33 contract tests, 10 backend tests, and 9
+The current automated baseline is 34 contract tests, 10 backend tests, and 9
 frontend tests. Autofill covers every category, a non-self respondent,
 issuer-aligned policy sources, structured on-chain data, and unique
 original/challenge evidence across a complete example lifecycle.

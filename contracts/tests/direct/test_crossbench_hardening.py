@@ -350,14 +350,16 @@ def test_resolve_stalled_dispute_refunds_both_parties_after_repeated_failures(di
     direct_vm.sender = direct_bob
     contract.submit_evidence(dispute_id, bundle(9))
 
-    # No LLM/web mock installed: every trigger_evaluation attempt raises,
-    # which must be caught and converted into a recorded, retryable
-    # [CONSENSUS_FAILED] UserError rather than corrupting dispute state.
+    # No LLM/web mock installed: every attempt fails consensus. The public
+    # write returns successfully after recording the failure; raising would
+    # roll the counter back on StudioNet.
     for attempt in range(1, 4):
-        with direct_vm.expect_revert("CONSENSUS_FAILED"):
-            contract.trigger_evaluation(dispute_id)
-        assert contract.get_dispute(dispute_id)["status"] == "EVIDENCE_SUBMISSION"
-        assert int(contract.get_dispute(dispute_id)["eval_attempts"]) == attempt
+        contract.trigger_evaluation(dispute_id)
+        failed = contract.get_dispute(dispute_id)
+        assert failed["status"] == "EVIDENCE_SUBMISSION"
+        assert int(failed["eval_attempts"]) == attempt
+        assert failed["last_consensus_failure_stage"] == "EVALUATION"
+        assert failed["last_consensus_failure_at"]
 
     with direct_vm.expect_revert("grace period"):
         contract.resolve_stalled_dispute(dispute_id)
@@ -378,3 +380,36 @@ def test_resolve_stalled_dispute_refunds_both_parties_after_repeated_failures(di
 
     with direct_vm.expect_revert("stage that can stall"):
         contract.resolve_stalled_dispute(dispute_id)
+
+
+def test_failed_final_assessments_persist_and_unlock_refund(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
+    direct_vm.sender = direct_bob
+    direct_vm.value = STAKE
+    contract.accept_dispute(dispute_id)
+    contract.submit_evidence(dispute_id, bundle(9))
+
+    mock_pages_ok(direct_vm)
+    mock_assessment(direct_vm, {
+        "A1": ("CLAIMANT", "HIGH"), "A2": ("NEITHER", "LOW"), "B1": ("RESPONDENT", "HIGH"),
+    })
+    contract.trigger_evaluation(dispute_id)
+    direct_vm.sender = direct_alice
+    contract.submit_challenge_evidence(dispute_id, bundle(20))
+    _warp(days=3)
+
+    direct_vm.clear_mocks()
+    for attempt in range(1, 4):
+        contract.finalize_dispute(dispute_id)
+        failed = contract.get_dispute(dispute_id)
+        assert failed["status"] == "PRELIMINARY_VERDICT"
+        assert int(failed["finalize_attempts"]) == attempt
+        assert failed["last_consensus_failure_stage"] == "FINALIZATION"
+        assert failed["last_consensus_failure_at"]
+
+    _warp(days=6)
+    assert contract.get_dispute(dispute_id)["can_resolve_stalled"] is True
+    contract.resolve_stalled_dispute(dispute_id)
+    assert contract.get_dispute(dispute_id)["status"] == "NO_CONSENSUS_REFUNDED"
+    assert contract.get_stats()["accounting_balanced"] is True

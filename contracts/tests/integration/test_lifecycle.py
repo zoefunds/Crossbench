@@ -22,7 +22,7 @@ from gltest import get_contract_factory, create_account
 from gltest.assertions import tx_execution_succeeded, tx_execution_failed
 
 STAKE = 5 * 10 ** 16
-PRODUCTION_CONTRACT = os.environ.get("CROSSBENCH_PRODUCTION_CONTRACT", "0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6")
+PRODUCTION_CONTRACT = os.environ.get("CROSSBENCH_PRODUCTION_CONTRACT", "0x2352A0cBF175F1e69eBc8364A35301570378FF22")
 
 ETHEREUM_BLOCK_POLICY = "https://ethereum.org/en/developers/docs/blocks/"
 ETHEREUM_HISTORY = "https://ethereum.org/en/history/"

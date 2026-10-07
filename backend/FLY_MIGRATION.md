@@ -10,12 +10,12 @@ deployment rather than obsolete migration steps.
 - URL: <https://crossbench-api.fly.dev/>
 - Region: `ams`
 - Image: `crossbench-api:deployment-01M45665XWTWC0N8JM5034PW9M`
-- Machines: two version-24 app machines in `ams`, both started with passing
+- Machines: two version-25 app machines in `ams`, both started with passing
   `GET /health` checks as of 2026-10-07
 - Runtime: Node.js 22, Hono, PostgreSQL
 - Process: `node dist/server.js`
 - Contract variable: `CONTRACT_ADDRESS`
-- Current contract: `0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6`
+- Current contract: `0x2352A0cBF175F1e69eBc8364A35301570378FF22`
 
 Required secret names are `DATABASE_URL`, `JWT_SECRET`, `INTERNAL_SECRET`,
 `CONTRACT_ADDRESS`, `GENLAYER_RPC_URL`, `GENLAYER_CHAIN_ID`,

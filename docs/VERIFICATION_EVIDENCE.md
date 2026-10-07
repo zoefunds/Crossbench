@@ -1,6 +1,6 @@
 # Verification evidence
 
-Last verified: 2026-10-07. Contract version: `0.3.0-studionet`.
+Last verified: 2026-10-07. Production version: `0.3.1-studionet`.
 
 ## Control-to-test map
 
@@ -20,7 +20,7 @@ Last verified: 2026-10-07. Contract version: `0.3.0-studionet`.
 ## Automated baseline
 
 ```text
-contract direct tests     33 passed
+contract direct tests     34 passed
 GenVM lint/validation     3/3 passed; 14 methods
 backend tests             10 passed
 frontend tests            9 passed
@@ -34,21 +34,30 @@ build completed successfully.
 
 ## Live evidence
 
-- Contract: `0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6`.
-- Deployment consensus: one round, three agreeing validators and two idle.
-- Lifecycle: `ec-1`, `PRELIMINARY_VERDICT`, real 0.1 GEN matched escrow.
+- Contract: `0x2352A0cBF175F1e69eBc8364A35301570378FF22`.
+- Deployment consensus: one round, all five validators agreeing.
+- Current lifecycle: fresh state, zero disputes and zero escrow.
+- Historical live lifecycle: former production `ec-1`,
+  `PRELIMINARY_VERDICT`, real 0.1 GEN matched escrow.
 - Policy: Ethereum Foundation, `PRIMARY`.
 - Ledger object: Ethereum mainnet genesis block, `eip155:1`, type `BLOCK`,
   full hash recorded in the lifecycle JSON, quality `CORROBORATED`.
 - Integrity: no duplicate or mutation flags.
-- API: healthy, fresh stats version `0.3.0-studionet`, accounting balanced.
+- API: both machines healthy, fresh stats version `0.3.1-studionet`, zero
+  state, accounting balanced.
 - Frontend: canonical alias serves deployment
-  `dpl_2mDUH6rHKDNNuATuxzvfLAT4FsRu` and the revised autofill bundle.
+  `dpl_3iHiVaxMdhxQwmdgCYJs69PbpQn6`; its bundles contain the current contract
+  address and not the former address.
 
 ## Evidence boundaries
 
 Direct tests mock nondeterministic validator output and prove contract state
 transitions. The live lifecycle proves real fetch and consensus behavior for
 its recorded sources, not universal availability of every future source.
-StudioNet failure rollback currently prevents persistent increment of consensus
-failure counters; see `ESCROW_RECOVERY.md`.
+Direct tests show 0.3.1 catching an inner failure and persisting the counter,
+stage, and timestamp. The first post-cutover real StudioNet assessment did not
+advance and a direct read still reported `eval_attempts=0`, demonstrating that
+an outer consensus failure bypasses that catch. The production deployment
+remains accounting-balanced, but the stalled-consensus threshold is not yet
+network-reliable. Former deployments and their immutable test stakes remain
+inventoried in `ESCROW_RECOVERY.md`.

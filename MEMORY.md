@@ -4,13 +4,12 @@
 
 - Frontend: <https://crossbench-app.vercel.app/> only.
 - Backend: <https://crossbench-api.fly.dev/>; both `ams` machines healthy.
-- StudioNet contract: `0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6`.
-- Deployment transaction: `0x08ba5e754509bf9bd5d877300bf059aae50abbb88461f1e487349c64d76b3072`.
-- Contract version `0.3.0-studionet`; source is intentionally uncommitted and
-  unpushed until the user explicitly authorizes Git publication.
-- Vercel deployment: `dpl_2mDUH6rHKDNNuATuxzvfLAT4FsRu`.
+- StudioNet contract: `0x2352A0cBF175F1e69eBc8364A35301570378FF22`.
+- Deployment transaction: `0xea3fee2c375a3cf676f49431a1019332d476d1f356e73f5b7621ab2f5a5e2322`.
+- Production contract version: `0.3.1-studionet`.
+- Vercel deployment: `dpl_3iHiVaxMdhxQwmdgCYJs69PbpQn6`.
 - Fly image: `crossbench-api:deployment-01M45665XWTWC0N8JM5034PW9M`;
-  both version-24 `ams` machines are started with passing checks.
+  both version-25 `ams` machines are started with passing checks.
 - Fly secret is `CONTRACT_ADDRESS`; frontend variable is
   `NEXT_PUBLIC_CONTRACT_ADDRESS`. Both were cut over on 2026-10-07.
 
@@ -59,7 +58,9 @@ contract escrows and their limits are fully inventoried in
 - StudioNet writes must be retried only after checking the on-chain
   postcondition.
 - Use `GENVM_VERSION=v0.2.16` for semantic validation in this environment.
-- Current baseline: 33 contract, 10 backend, and 9 frontend tests passing;
+- Current baseline: 34 contract, 10 backend, and 9 frontend tests passing;
   backend/frontend dependency audits report zero vulnerabilities.
-- StudioNet failed-consensus writes roll back their attempted failure counters;
-  do not rely on stalled-consensus recovery there without a network change.
+- Production 0.3.1 records failures in direct-VM tests, but its first live
+  StudioNet assessment did not persist the counter because the failure occurred
+  outside the catchable contract frame. A two-phase deterministic attempt
+  record remains required. Historical deployments remain immutable.

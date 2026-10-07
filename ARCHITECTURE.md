@@ -66,11 +66,11 @@ exact mechanics):
   consensus run, every originally-judged item's fingerprint is compared
   against the one recorded at the preliminary verdict; any drift is recorded
   in `source_integrity.mutated_ids` as a permanent, visible audit trail.
-- **Stalled-consensus recovery design**: the source records failure counters
-  and exposes `resolve_stalled_dispute` after a threshold and grace period.
-  Direct VM tests cover this state machine. StudioNet currently rolls back the
-  counter update with the failed outer consensus transaction, so this path is
-  unavailable there until failure-state persistence is supported.
+- **Stalled-consensus recovery**: version 0.3.1 records a failed attempt and
+  returns successfully instead of raising, allowing StudioNet to commit the
+  counter while leaving the action retryable. After the threshold and grace
+  period, `resolve_stalled_dispute` refunds both stakes. Evaluation and final
+  assessment failure paths are both covered by direct VM tests.
 
 ## Backend
 
@@ -159,9 +159,9 @@ and cannot influence protocol state.
   relevance/provenance judgments and harmless dynamic-page render differences.
   Recorded real-consensus integration runs demonstrate successful fetch and
   assessment paths for their sources, not a universal liveness guarantee.
-- Failed outer consensus writes roll back their failure-counter increments on
-  StudioNet. Historical affected test escrows are inventoried in
-  `docs/ESCROW_RECOVERY.md`.
+- Historical 0.3.0 contracts raised after saving, so StudioNet rolled those
+  failure counters back. Version 0.3.1 avoids that rollback pattern;
+  historical affected test escrows remain in `docs/ESCROW_RECOVERY.md`.
 - StudioNet is a test network and GEN here is testnet value.
 
 ## Ownership

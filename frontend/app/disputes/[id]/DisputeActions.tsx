@@ -22,6 +22,8 @@ interface Props {
   canFinalize: boolean;
   canClaimTimeout: boolean;
   canResolveStalled: boolean;
+  evalAttempts: string;
+  finalizeAttempts: string;
   bundleRespondentSubmitted: boolean;
   responseDeadline: string;
   evidenceDeadline: string;
@@ -64,14 +66,14 @@ export function DisputeActions(props: Props) {
     return () => clearInterval(interval);
   }, []);
 
-  async function act(functionName: string, args: unknown[], value?: bigint, actionKey = functionName) {
+  async function act(functionName: string, args: unknown[], value?: bigint, actionKey = functionName, markCompleted = true) {
     if (!client || completedActions.has(actionKey)) return;
     setBusy(true);
     setError(null);
     try {
       const { succeeded } = await runWrite(client, { address: CONTRACT_ADDRESS, functionName, args, value }, setProgress);
       if (succeeded) {
-        setCompletedActions((current) => new Set(current).add(actionKey));
+        if (markCompleted) setCompletedActions((current) => new Set(current).add(actionKey));
         props.onDone();
       }
       else setError("Transaction executed but did not succeed. See status above.");
@@ -141,8 +143,8 @@ export function DisputeActions(props: Props) {
       {props.canTriggerEvaluation && (
         <div className="glass-card p-5">
           <p className="mb-3 font-semibold text-text-ec">Both bundles are pinned</p>
-          <p className="mb-4 text-sm text-text-dim">Anyone may now trigger independent validator assessment.</p>
-          <button disabled={busy || completedActions.has("trigger_evaluation")} onClick={() => act("trigger_evaluation", [props.disputeId])} className="rounded px-5 py-2.5 font-semibold text-navy bg-cyan disabled:cursor-not-allowed disabled:opacity-40">
+          <p className="mb-4 text-sm text-text-dim">Anyone may now trigger independent validator assessment. Failed consensus attempts recorded: {props.evalAttempts}.</p>
+          <button disabled={busy} onClick={() => act("trigger_evaluation", [props.disputeId], undefined, "trigger_evaluation", false)} className="rounded px-5 py-2.5 font-semibold text-navy bg-cyan disabled:cursor-not-allowed disabled:opacity-40">
             Trigger evaluation
           </button>
         </div>
@@ -171,7 +173,8 @@ export function DisputeActions(props: Props) {
       {props.canFinalize && challengeClosed && (
         <div className="glass-card p-5">
           <p className="mb-3 font-semibold text-text-ec">Challenge window closed</p>
-          <button disabled={busy || completedActions.has("finalize_dispute")} onClick={() => act("finalize_dispute", [props.disputeId])} className="rounded px-5 py-2.5 font-semibold text-navy bg-cyan disabled:cursor-not-allowed disabled:opacity-40">
+          <p className="mb-4 text-sm text-text-dim">Failed final-assessment attempts recorded: {props.finalizeAttempts}.</p>
+          <button disabled={busy} onClick={() => act("finalize_dispute", [props.disputeId], undefined, "finalize_dispute", false)} className="rounded px-5 py-2.5 font-semibold text-navy bg-cyan disabled:cursor-not-allowed disabled:opacity-40">
             Finalize and settle
           </button>
         </div>

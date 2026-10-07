@@ -36,6 +36,10 @@ interface DisputeData {
   can_challenge: boolean;
   can_finalize: boolean;
   can_resolve_stalled: boolean;
+  eval_attempts: string;
+  finalize_attempts: string;
+  last_consensus_failure_stage: string;
+  last_consensus_failure_at: string;
   source_integrity: { mutated_ids: string[]; duplicate_ids?: string[] } | null;
 }
 
@@ -164,6 +168,13 @@ export default function DisputeDetailPage({ params }: { params: Promise<{ id: st
           Duplicate-content evidence {dispute.source_integrity.duplicate_ids!.join(", ")} was retained for auditability but assigned zero verdict weight.
         </div>
       )}
+      {dispute.last_consensus_failure_stage && (
+        <div className="mt-6 glass-card border-error/40 p-4 text-sm text-error">
+          The latest {dispute.last_consensus_failure_stage.toLowerCase()} consensus attempt did not agree and was
+          recorded at {dispute.last_consensus_failure_at}. Evaluation attempts: {dispute.eval_attempts}; finalization
+          attempts: {dispute.finalize_attempts}. The action remains retryable.
+        </div>
+      )}
 
       <div className="mt-8 grid gap-6 sm:grid-cols-2">
         <EvidenceBundleList title="Claimant's evidence" items={dispute.bundle_claimant} />
@@ -185,6 +196,8 @@ export default function DisputeDetailPage({ params }: { params: Promise<{ id: st
           canFinalize={dispute.can_finalize}
           canClaimTimeout={dispute.can_claim_timeout}
           canResolveStalled={dispute.can_resolve_stalled}
+          evalAttempts={dispute.eval_attempts}
+          finalizeAttempts={dispute.finalize_attempts}
           bundleRespondentSubmitted={dispute.bundle_respondent_submitted}
           responseDeadline={dispute.response_deadline}
           evidenceDeadline={dispute.evidence_deadline}

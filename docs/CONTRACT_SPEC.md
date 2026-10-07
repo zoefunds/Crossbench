@@ -4,8 +4,9 @@ Source: `contracts/crossbench_contract.py`. This is a reference, not a copy
 - when in doubt, the contract source is authoritative; re-derive this doc
 from it rather than trusting it blindly if the two ever disagree.
 
-Current live deployment (StudioNet): `0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6`
-(see `README.md` / `CONTRACT_DEPLOYMENT.md`). Runner:
+Current live deployment is version `0.3.1-studionet` at
+`0x2352A0cBF175F1e69eBc8364A35301570378FF22`. It records consensus failures
+without reverting their counters. Runner:
 `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`.
 
 ## Constants
@@ -143,15 +144,13 @@ transaction. Records the per-item content fingerprints into
 `evidence_fingerprints`, the policy provenance result into
 `policy_assessment`, and content aliases into
 `source_integrity.duplicate_ids` (see Source integrity, below). If the underlying
-consensus call raises (validators disagreed, an LLM formatting fault),
-the source attempts to increment `eval_attempts` and raises a
-`[CONSENSUS_FAILED]` `UserError` is raised - dispute state and status are
-otherwise untouched, so the exact same call can simply be retried. In the
-direct VM, after `STALL_ATTEMPT_THRESHOLD` recorded failures and
+consensus call raises (validators disagreed, an LLM formatting fault), version
+0.3.1 increments `eval_attempts`, records the stage/time, saves, and returns
+successfully. The status remains untouched and the same call can be retried.
+Returning is essential: raising after saving would roll the write back on
+StudioNet. After `STALL_ATTEMPT_THRESHOLD` recorded failures and
 `STALL_GRACE_PERIOD` past the evidence deadline, `resolve_stalled_dispute`
-becomes callable. Current StudioNet behavior rolls the counter update back
-with the failed outer transaction, so this threshold has not been reachable
-in observed failed-consensus writes there.
+becomes callable.
 
 ### `submit_challenge_evidence(dispute_id, bundle_json)`
 Either party, only during `PRELIMINARY_VERDICT` and before
@@ -181,9 +180,10 @@ records any that changed into `source_integrity.mutated_ids` on the
 dispute - visible, auditable evidence that a source was edited after the
 preliminary verdict formed, even though settlement still proceeds on the
 freshly re-run result. Consensus failures here follow the same pattern as
-`trigger_evaluation`: caught, counted into `finalize_attempts`, surfaced as
-`[CONSENSUS_FAILED]`, retryable, and eventually eligible for
-`resolve_stalled_dispute`.
+`trigger_evaluation`: caught, counted into `finalize_attempts`, recorded with
+the failure stage and timestamp, and returned without raising so StudioNet
+commits the counter. The action remains retryable and eventually becomes
+eligible for `resolve_stalled_dispute`.
 
 ### `resolve_stalled_dispute(dispute_id)`
 Anyone-callable escape hatch for a dispute whose validator consensus keeps
@@ -306,10 +306,9 @@ Important aggregation and consensus rules:
   prompt, so the category actually changes how evidence gets weighed
   rather than being a label the LLM is free to interpret generically.
 - **Stalled-consensus recovery**: `trigger_evaluation` and `finalize_dispute`
-  catch a failed consensus run, attempt to record it, and raise a retryable
-  `[CONSENSUS_FAILED]` error rather than corrupting state. Direct VM behavior
-  permits the threshold flow. StudioNet currently rolls the counter back with
-  the failed transaction. Where failure counters persist, after
+  catch a failed consensus run, record its counter/stage/time, and return
+  successfully while leaving the action retryable. This lets StudioNet commit
+  the recovery state. After
   `STALL_ATTEMPT_THRESHOLD` failures and `STALL_GRACE_PERIOD` past the
   relevant deadline, `resolve_stalled_dispute` refunds both stakes rather
   than leaving a dispute that cannot reach consensus stuck in escrow

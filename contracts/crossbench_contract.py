@@ -8,7 +8,7 @@ from ipaddress import ip_address
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-VERSION = "0.3.0-studionet"
+VERSION = "0.3.1-studionet"
 NETWORK_ID = "61999"
 
 MIN_STAKE = 10 ** 15
@@ -527,6 +527,7 @@ class Crossbench(gl.Contract):
             "evidence_fingerprints": {}, "policy_assessment": None,
             "source_integrity": {"mutated_ids": [], "duplicate_ids": []},
             "eval_attempts": "0", "finalize_attempts": "0",
+            "last_consensus_failure_stage": "", "last_consensus_failure_at": "",
         }
         self._save(dispute)
         self.dispute_ids.append(dispute_id)
@@ -624,19 +625,17 @@ class Crossbench(gl.Contract):
         items = self._all_items(dispute, include_challenge=False)
         try:
             result = _run_assessment_consensus(dispute["claim"], dispute["claim_category"], dispute["policy_reference"], dispute["policy_issuer"], items) if items else {"items": []}
-        except Exception as err:
+        except Exception:
             # Validator consensus failed (e.g. disagreement on fetched
             # content, an LLM formatting fault). Leave status untouched so
-            # the exact same call can simply be retried; record the attempt
-            # so a dispute that keeps failing has a documented recovery path
-            # via resolve_stalled_dispute instead of staying stuck forever.
+            # the exact same call can simply be retried. This method MUST
+            # return successfully after saving: raising here would revert the
+            # counter on StudioNet and make the recovery threshold unreachable.
             dispute["eval_attempts"] = str(int(dispute["eval_attempts"]) + 1)
+            dispute["last_consensus_failure_stage"] = "EVALUATION"
+            dispute["last_consensus_failure_at"] = _iso()
             self._save(dispute)
-            raise gl.vm.UserError(
-                f"[CONSENSUS_FAILED] validator assessment consensus failed (attempt {dispute['eval_attempts']}) - "
-                f"retry trigger_evaluation, or after {STALL_ATTEMPT_THRESHOLD} failed attempts and "
-                f"{STALL_GRACE_PERIOD // 3600}h past the evidence deadline call resolve_stalled_dispute to refund both stakes"
-            ) from err
+            return
         aggregate = _aggregate(
             result["items"], result["policy"]["source_quality"],
             True,
@@ -646,6 +645,8 @@ class Crossbench(gl.Contract):
         dispute["preliminary_verdict"] = aggregate
         dispute["evidence_fingerprints"] = {item["id"]: item["content_hash"] for item in result["items"]}
         dispute["source_integrity"] = {"mutated_ids": [], "duplicate_ids": [item["id"] for item in result["items"] if item.get("duplicate_of")]}
+        dispute["last_consensus_failure_stage"] = ""
+        dispute["last_consensus_failure_at"] = ""
         dispute["status"] = "PRELIMINARY_VERDICT"
         dispute["challenge_deadline"] = str(_now() + CHALLENGE_WINDOW)
         self._save(dispute)
@@ -685,14 +686,12 @@ class Crossbench(gl.Contract):
             items = self._all_items(dispute, include_challenge=True)
             try:
                 result = _run_assessment_consensus(dispute["claim"], dispute["claim_category"], dispute["policy_reference"], dispute["policy_issuer"], items) if items else {"items": []}
-            except Exception as err:
+            except Exception:
                 dispute["finalize_attempts"] = str(int(dispute["finalize_attempts"]) + 1)
+                dispute["last_consensus_failure_stage"] = "FINALIZATION"
+                dispute["last_consensus_failure_at"] = _iso()
                 self._save(dispute)
-                raise gl.vm.UserError(
-                    f"[CONSENSUS_FAILED] validator assessment consensus failed (attempt {dispute['finalize_attempts']}) - "
-                    f"retry finalize_dispute, or after {STALL_ATTEMPT_THRESHOLD} failed attempts and "
-                    f"{STALL_GRACE_PERIOD // 3600}h past the challenge deadline call resolve_stalled_dispute to refund both stakes"
-                ) from err
+                return
             aggregate = _aggregate(
                 result["items"], result["policy"]["source_quality"],
                 True,
@@ -716,6 +715,8 @@ class Crossbench(gl.Contract):
                 "mutated_ids": sorted(mutated_ids),
                 "duplicate_ids": [item["id"] for item in result["items"] if item.get("duplicate_of")],
             }
+            dispute["last_consensus_failure_stage"] = ""
+            dispute["last_consensus_failure_at"] = ""
             self._save(dispute)
             self._settle(dispute, aggregate)
             return

@@ -1,0 +1,35 @@
+{
+    "record_type": "archived_former_production_lifecycle",
+    "current_production": false,
+    "network": "studionet",
+    "contract_version": "0.3.0-studionet",
+  "contract_address": "0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6",
+  "deployment_transaction": "0x08ba5e754509bf9bd5d877300bf059aae50abbb88461f1e487349c64d76b3072",
+  "dispute_id": "ec-1",
+  "claimant": "0xF526ADbdEB5169e7CeA32c06EF69d7ce4a2D6276",
+  "respondent": "0x94D2637d397f7277b4d9d21796bbAFe08F9De416",
+  "challenge_deadline": 1791533592,
+  "challenge_deadline_utc": "2026-10-09T08:13:12Z",
+  "preliminary_verdict": "INCONCLUSIVE",
+  "policy_issuer": "Ethereum Foundation",
+  "policy_source_quality": "PRIMARY",
+    "onchain_reference": {
+    "chain_id": "eip155:1",
+    "reference_type": "BLOCK",
+    "reference_value": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
+        "source_quality": "CORROBORATED"
+    },
+    "source_integrity": {
+        "duplicate_ids": [],
+        "mutated_ids": []
+    },
+    "accounting_snapshot": {
+        "captured_at": "2026-10-07T08:25:19.840Z",
+        "total_deposited_atto": "100000000000000000",
+        "dispute_escrow_atto": "100000000000000000",
+        "claimable_atto": "0",
+        "withdrawn_atto": "0",
+        "accounting_balanced": true
+    },
+    "completed_through": "PRELIMINARY_VERDICT"
+}
