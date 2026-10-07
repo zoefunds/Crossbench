@@ -246,8 +246,9 @@ Important aggregation and consensus rules:
   rejected. Whole-page hashes are deliberately not compared during validator
   acceptance because timestamps, counters, localization, and CDN variants make
   byte equality brittle; hashes remain audit and mutation-detection metadata.
-  On-chain references additionally
-  require every validator to reject `UNVERIFIED`, while moderation policy
+  On-chain references additionally require validators to agree on the
+  verified/unverified boundary (unanimous `UNVERIFIED` is recorded and given
+  zero weight), while moderation policy
   references require every validator to classify the policy as `PRIMARY`.
   Free-text `reason_code` remains
   informational and excluded from consensus.

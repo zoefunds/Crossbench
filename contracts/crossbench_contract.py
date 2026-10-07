@@ -264,7 +264,11 @@ def _assessments_agree(own: dict, proposed: dict, strict_quality_ids: list = Non
             return False
         if not _ordinally_compatible(own_item["source_quality"], proposed_item["source_quality"], SOURCE_QUALITY_RANK):
             return False
-        if own_item["id"] in strict_quality and "UNVERIFIED" in (own_item["source_quality"], proposed_item["source_quality"]):
+        if own_item["id"] in strict_quality and (
+            own_item["source_quality"] == "UNVERIFIED"
+        ) != (
+            proposed_item["source_quality"] == "UNVERIFIED"
+        ):
             return False
         if own_item.get("duplicate_of", "") != proposed_item.get("duplicate_of", ""):
             return False
@@ -334,7 +338,9 @@ def _run_assessment_consensus(claim_text: str, claim_category: str, policy_refer
             "credible independent source whose claims can be checked; otherwise UNVERIFIED. A platform policy must be "
             "the platform's own policy/documentation (or a faithful independently verifiable archive). ONCHAIN_REF "
             "must expose independently verifiable ledger data and identify the relevant chain plus transaction, block, "
-            "contract, or account; a party-authored summary or screenshot is UNVERIFIED. Then, for each evidence item, "
+            "contract, or account; a party-authored summary or screenshot is UNVERIFIED. Judge provenance independently "
+            "from support: an authentic source remains PRIMARY or CORROBORATED when it contradicts the claim, and an "
+            "authentic source that is irrelevant to the claim is not thereby UNVERIFIED. Then, for each evidence item, "
             "independently judge from its actual fetched content (not its submitter's description) "
             "whether it supports the CLAIMANT's account, the RESPONDENT's account, or NEITHER/inconclusive, and how "
             "relevant it is (LOW, MEDIUM, HIGH) to the specific disputed claim below. An item whose content is "

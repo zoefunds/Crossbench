@@ -130,6 +130,10 @@ def test_validator_comparison_allows_bounded_judgment_variance_but_rejects_confl
         {"id": "A1", "supports": "NEITHER", "relevance": "MEDIUM", "source_quality": "UNVERIFIED", "content_hash": "content"},
     ]}
     assert module._assessments_agree(base, unverified, ["A1"]) is False
+    unverified_consensus = {"policy": {"source_quality": "CORROBORATED", "content_hash": "other-policy"}, "items": [
+        {"id": "A1", "supports": "NEITHER", "relevance": "LOW", "source_quality": "UNVERIFIED", "content_hash": "other-content"},
+    ]}
+    assert module._assessments_agree(unverified, unverified_consensus, ["A1"]) is True
     assert module._assessments_agree(base, adjacent, [], require_primary_policy=True) is False
 
 
