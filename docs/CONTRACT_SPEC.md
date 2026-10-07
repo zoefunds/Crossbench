@@ -4,7 +4,7 @@ Source: `contracts/crossbench_contract.py`. This is a reference, not a copy
 - when in doubt, the contract source is authoritative; re-derive this doc
 from it rather than trusting it blindly if the two ever disagree.
 
-Current live deployment (StudioNet): `0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6`
+Current live deployment (StudioNet): `0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6`
 (see `README.md` / `CONTRACT_DEPLOYMENT.md`). Runner:
 `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`.
 
@@ -21,6 +21,9 @@ Current live deployment (StudioNet): `0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6
 | `MAX_URL` | 800 chars | Evidence item location length bound |
 | `MAX_DESC` | 600 chars (min 8) | Evidence item description length bounds |
 | `MAX_REASON` | 400 chars | Validator reason-code length bound |
+| `MAX_POLICY_ISSUER` | 160 chars | Declared authoritative policy/agreement issuer |
+| `MAX_CHAIN_ID` | 64 chars | Structured on-chain namespace/chain identifier |
+| `MAX_REFERENCE_VALUE` | 200 chars | Transaction hash, block height/hash, contract, or account identifier |
 | `RESPONSE_WINDOW` | 86400s (24h) | Time for a respondent to counter-stake and accept |
 | `EVIDENCE_WINDOW` | 259200s (72h) | Time for both sides to submit evidence after acceptance |
 | `CHALLENGE_WINDOW` | 172800s (48h) | Time to submit additive challenge evidence after a preliminary verdict |
@@ -89,21 +92,28 @@ SETTLED / CANCELLED / DEFAULTED_NO_RESPONSE / NO_CONSENSUS_REFUNDED  (terminal)
 All raise `gl.vm.UserError("[EXPECTED] ...")` on invalid input/state - the
 `[EXPECTED]` prefix signals a normal validation rejection, not a bug.
 
-### `create_dispute(claim_text, claim_category, policy_reference, bundle_json) -> str` (payable)
+### `create_dispute(claim_text, claim_category, intended_respondent, policy_reference, policy_issuer, bundle_json) -> str` (payable)
 Claimant opens a dispute and pins their evidence bundle at creation - it
 can never be replaced, only added to later via challenge evidence. Stake
 is `gl.message.value`, must be in `[MIN_STAKE, MAX_STAKE]`. Returns the new
-dispute ID (`"ec-<n>"`, sequential). `bundle_json` is a JSON array of up to
+dispute ID (`"ec-<n>"`, sequential). The wallet-signed transaction binds the
+claimant identity, while `intended_respondent` must be a different, nonzero
+address and is the only wallet allowed to accept. `policy_issuer` names the
+organization that officially published the policy/agreement. `bundle_json` is a JSON array of up to
 `MAX_ITEMS` `{kind, location, description}` objects (`kind` is `WEB_PAGE`
-or `ONCHAIN_REF`). The policy reference and every `location`, including an
+or `ONCHAIN_REF`). An `ONCHAIN_REF` additionally requires structured
+`chain_id`, `reference_type` (`BLOCK`, `TRANSACTION`, `CONTRACT`, or `ACCOUNT`),
+and `reference_value`. The policy reference and every `location`, including an
 on-chain explorer/API reference, must be independently retrievable public
 HTTPS URLs. Canonically identical evidence URLs (ignoring host case, default
 HTTPS port, trailing slash, and fragments) are rejected within and across all
-parties' original and challenge bundles.
+parties' original and challenge bundles. Two explorer URLs identifying the
+same structured on-chain object are also rejected as duplicates.
 
 ### `accept_dispute(dispute_id)` (payable)
-Respondent counter-stakes. `gl.message.value` must **exactly** equal the
-claimant's stake. Cannot be the claimant's own address. Only valid while
+The named intended respondent counter-stakes. The caller's wallet identity
+must exactly match `intended_respondent`, and `gl.message.value` must
+**exactly** equal the claimant's stake. Only valid while
 `status == CREATED` and before `response_deadline`.
 
 ### `cancel_dispute(dispute_id)`
@@ -134,11 +144,14 @@ transaction. Records the per-item content fingerprints into
 `policy_assessment`, and content aliases into
 `source_integrity.duplicate_ids` (see Source integrity, below). If the underlying
 consensus call raises (validators disagreed, an LLM formatting fault),
-the error is caught, `eval_attempts` is incremented and persisted, and a
+the source attempts to increment `eval_attempts` and raises a
 `[CONSENSUS_FAILED]` `UserError` is raised - dispute state and status are
-otherwise untouched, so the exact same call can simply be retried. After
-`STALL_ATTEMPT_THRESHOLD` recorded failures and `STALL_GRACE_PERIOD` past
-the evidence deadline, `resolve_stalled_dispute` becomes callable instead.
+otherwise untouched, so the exact same call can simply be retried. In the
+direct VM, after `STALL_ATTEMPT_THRESHOLD` recorded failures and
+`STALL_GRACE_PERIOD` past the evidence deadline, `resolve_stalled_dispute`
+becomes callable. Current StudioNet behavior rolls the counter update back
+with the failed outer transaction, so this threshold has not been reachable
+in observed failed-consensus writes there.
 
 ### `submit_challenge_evidence(dispute_id, bundle_json)`
 Either party, only during `PRELIMINARY_VERDICT` and before
@@ -233,9 +246,10 @@ Important aggregation and consensus rules:
 - Each independently fetched source receives a provenance grade. `PRIMARY`
   means the authoritative publisher/system of record; `CORROBORATED` means a
   credible independently checkable secondary source; `UNVERIFIED` contributes
-  no payout weight. Moderation claims additionally require a `PRIMARY` policy
-  reference or resolve `INCONCLUSIVE`. `ONCHAIN_REF` items must expose ledger
-  data and identify the relevant chain and transaction/block/contract/account.
+  no payout weight. Every claim requires all validators to classify the
+  declared issuer's policy/agreement as `PRIMARY` or it resolves
+  `INCONCLUSIVE`. `ONCHAIN_REF` items must expose ledger data matching the
+  structured chain, reference type, and reference value stored on-chain.
 - Content-identical items are deterministically linked with `duplicate_of` and
   only the first contributes weight, preventing mirrored URLs from amplifying a
   party's case.
@@ -248,8 +262,8 @@ Important aggregation and consensus rules:
   byte equality brittle; hashes remain audit and mutation-detection metadata.
   On-chain references additionally require validators to agree on the
   verified/unverified boundary (unanimous `UNVERIFIED` is recorded and given
-  zero weight), while moderation policy
-  references require every validator to classify the policy as `PRIMARY`.
+  zero weight), while every policy/agreement reference requires every
+  validator to classify the declared issuer's source as `PRIMARY`.
   Free-text `reason_code` remains
   informational and excluded from consensus.
 
@@ -269,7 +283,9 @@ Important aggregation and consensus rules:
   `UNVERIFIED`/`NEITHER`/`LOW`, and
   duplicate or incomplete assessment item sets are rejected.
 - **Duplicate resistance**: canonical URL duplicates are rejected at every
-  submission boundary. Different URLs returning identical fetched content are
+  submission boundary. Structured on-chain identity also prevents the same
+  block/transaction/contract/account being resubmitted through another
+  explorer. Different URLs returning identical fetched content are
   recorded in `source_integrity.duplicate_ids`, linked by `duplicate_of`, and
   excluded from aggregate weight after the first occurrence.
 - **Independent source verification**: every validator fetches and judges each
@@ -290,8 +306,10 @@ Important aggregation and consensus rules:
   prompt, so the category actually changes how evidence gets weighed
   rather than being a label the LLM is free to interpret generically.
 - **Stalled-consensus recovery**: `trigger_evaluation` and `finalize_dispute`
-  catch a failed consensus run, record the attempt, and raise a retryable
-  `[CONSENSUS_FAILED]` error rather than corrupting state. After
+  catch a failed consensus run, attempt to record it, and raise a retryable
+  `[CONSENSUS_FAILED]` error rather than corrupting state. Direct VM behavior
+  permits the threshold flow. StudioNet currently rolls the counter back with
+  the failed transaction. Where failure counters persist, after
   `STALL_ATTEMPT_THRESHOLD` failures and `STALL_GRACE_PERIOD` past the
   relevant deadline, `resolve_stalled_dispute` refunds both stakes rather
   than leaving a dispute that cannot reach consensus stuck in escrow

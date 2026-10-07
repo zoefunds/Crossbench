@@ -1,108 +1,126 @@
 import json
-from conftest import CONTRACT, STAKE, bundle, mock_assessment, mock_pages_ok, addr_hex
+from conftest import CONTRACT, STAKE, bundle, onchain_bundle, mock_assessment, mock_pages_ok, addr_hex
 
 
-def _create(direct_vm, contract, claimant, category="MODERATION_POLICY_VIOLATION"):
+def _create(direct_vm, contract, claimant, respondent, category="MODERATION_POLICY_VIOLATION"):
     direct_vm.sender = claimant
     direct_vm.value = STAKE
     return contract.create_dispute(
         "The platform removed my post citing rule 4.2 but the post never mentioned the restricted topic.",
-        category, "https://platform.example.com/policy#rule-4.2", bundle(1, 2),
+        category, addr_hex(respondent), "https://platform.example.com/policy#rule-4.2", "Example Platform", bundle(1, 2),
     )
 
 
-def test_create_dispute_rejects_bad_category(direct_vm, direct_deploy, direct_alice):
+def test_create_dispute_rejects_bad_category(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
     direct_vm.sender = direct_alice
     direct_vm.value = STAKE
     with direct_vm.expect_revert("claim_category"):
-        contract.create_dispute("x" * 50, "NOT_A_CATEGORY", "https://x.example.com/policy", bundle(1))
+        contract.create_dispute("x" * 50, "NOT_A_CATEGORY", addr_hex(direct_bob), "https://x.example.com/policy", "Example", bundle(1))
 
 
-def test_policy_reference_must_be_public_https(direct_vm, direct_deploy, direct_alice):
+def test_policy_reference_must_be_public_https(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
     direct_vm.sender = direct_alice
     direct_vm.value = STAKE
     with direct_vm.expect_revert("policy reference must use https"):
-        contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", "platform policy rule 4.2", bundle(1))
+        contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", addr_hex(direct_bob), "platform policy rule 4.2", "Example", bundle(1))
 
 
-def test_create_dispute_rejects_stake_out_of_range(direct_vm, direct_deploy, direct_alice):
+def test_create_dispute_rejects_stake_out_of_range(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
     direct_vm.sender = direct_alice
     direct_vm.value = 1
     with direct_vm.expect_revert("stake"):
-        contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", "https://x.example.com/policy", bundle(1))
+        contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", addr_hex(direct_bob), "https://x.example.com/policy", "Example", bundle(1))
 
 
-def test_create_dispute_rejects_oversized_bundle(direct_vm, direct_deploy, direct_alice):
+def test_create_dispute_rejects_oversized_bundle(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
     direct_vm.sender = direct_alice
     direct_vm.value = STAKE
     with direct_vm.expect_revert("evidence bundle"):
-        contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", "https://x.example.com/policy", bundle(1, 2, 3, 4))
+        contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", addr_hex(direct_bob), "https://x.example.com/policy", "Example", bundle(1, 2, 3, 4))
 
 
-def test_create_dispute_rejects_ssrf_targets(direct_vm, direct_deploy, direct_alice):
+def test_create_dispute_rejects_ssrf_targets(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
     direct_vm.sender = direct_alice
     direct_vm.value = STAKE
     bad = json.dumps([{"kind": "WEB_PAGE", "location": "https://169.254.169.254/latest/meta-data", "description": "an internal metadata endpoint"}])
     with direct_vm.expect_revert("private or internal host"):
-        contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", "https://x.example.com/policy", bad)
+        contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", addr_hex(direct_bob), "https://x.example.com/policy", "Example", bad)
     for location in ("https://172.16.0.1/private", "https://[::1]/private", "https://public.example@169.254.169.254/private"):
         direct_vm.value = STAKE
         bad = json.dumps([{"kind": "WEB_PAGE", "location": location, "description": "an internal network target"}])
         with direct_vm.expect_revert("private or internal host"):
-            contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", "https://x.example.com/policy", bad)
+            contract.create_dispute("x" * 50, "MODERATION_POLICY_VIOLATION", addr_hex(direct_bob), "https://x.example.com/policy", "Example", bad)
 
 
-def test_onchain_reference_must_be_independently_fetchable_https(direct_vm, direct_deploy, direct_alice):
+def test_onchain_reference_must_be_independently_fetchable_https(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
     direct_vm.sender = direct_alice
     direct_vm.value = STAKE
-    opaque = json.dumps([{"kind": "ONCHAIN_REF", "location": "ethereum:0x1234", "description": "opaque chain reference"}])
+    opaque = onchain_bundle("ethereum:0x1234", "eip155:1", "BLOCK", "0x1234", "opaque chain reference")
     with direct_vm.expect_revert("must use https"):
-        contract.create_dispute("x" * 50, "FACTUAL_ACCOUNT_DISPUTE", "https://x.example.com/policy", opaque)
+        contract.create_dispute("x" * 50, "FACTUAL_ACCOUNT_DISPUTE", addr_hex(direct_bob), "https://x.example.com/policy", "Example", opaque)
 
 
 def test_accept_dispute_requires_exact_counter_stake(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE - 1
     with direct_vm.expect_revert("counter-stake"):
         contract.accept_dispute(dispute_id)
 
 
-def test_claimant_cannot_accept_own_dispute(direct_vm, direct_deploy, direct_alice):
+def test_only_wallet_named_as_intended_respondent_can_accept(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
+    dispute = contract.get_dispute(dispute_id)
+    assert dispute["claimant"].lower() == addr_hex(direct_alice).lower()
+    assert dispute["intended_respondent"].lower() == addr_hex(direct_bob).lower()
+
+    direct_vm.sender = direct_charlie
+    direct_vm.value = STAKE
+    with direct_vm.expect_revert("only the intended respondent"):
+        contract.accept_dispute(dispute_id)
+
+    direct_vm.sender = direct_bob
+    direct_vm.value = STAKE
+    contract.accept_dispute(dispute_id)
+    assert contract.get_dispute(dispute_id)["status"] == "EVIDENCE_SUBMISSION"
+
+
+def test_claimant_cannot_accept_own_dispute(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_alice
     direct_vm.value = STAKE
-    with direct_vm.expect_revert("cannot counter-stake"):
+    with direct_vm.expect_revert("only the intended respondent"):
         contract.accept_dispute(dispute_id)
 
 
-def test_cancel_before_accept_refunds_claimant(direct_vm, direct_deploy, direct_alice):
+def test_cancel_before_accept_refunds_claimant(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_alice
     contract.cancel_dispute(dispute_id)
     assert contract.get_dispute(dispute_id)["status"] == "CANCELLED"
     assert contract.get_credit(addr_hex(direct_alice)) == str(STAKE)
 
 
-def test_response_timeout_rejected_before_deadline(direct_vm, direct_deploy, direct_alice):
+def test_response_timeout_rejected_before_deadline(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     with direct_vm.expect_revert("response window has not closed"):
         contract.claim_response_timeout(dispute_id)
 
 
 def test_evidence_bundles_are_pinned_and_immutable(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -119,7 +137,7 @@ def test_evidence_bundles_are_pinned_and_immutable(direct_vm, direct_deploy, dir
 
 def test_trigger_evaluation_rejected_until_both_bundles_or_deadline(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -130,7 +148,7 @@ def test_trigger_evaluation_rejected_until_both_bundles_or_deadline(direct_vm, d
 
 def test_full_claimant_win_settlement(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -153,7 +171,7 @@ def test_full_claimant_win_settlement(direct_vm, direct_deploy, direct_alice, di
 
 def test_inconclusive_splits_refund_evenly(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -173,7 +191,7 @@ def test_inconclusive_splits_refund_evenly(direct_vm, direct_deploy, direct_alic
 
 def test_unreachable_items_forced_neither(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -189,7 +207,7 @@ def test_unreachable_items_forced_neither(direct_vm, direct_deploy, direct_alice
 
 def test_challenge_window_is_additive_only(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -212,7 +230,7 @@ def test_challenge_window_is_additive_only(direct_vm, direct_deploy, direct_alic
 
 def test_finalize_rejected_before_challenge_deadline(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -236,7 +254,7 @@ def test_finalize_rejected_before_challenge_deadline(direct_vm, direct_deploy, d
 
 def test_accounting_invariant_holds_after_settlement(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)

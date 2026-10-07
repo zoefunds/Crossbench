@@ -4,16 +4,26 @@
 
 - Frontend: <https://crossbench-app.vercel.app/> only.
 - Backend: <https://crossbench-api.fly.dev/>; both `ams` machines healthy.
-- StudioNet contract: `0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6`.
-- Deployment transaction: `0x231b7a38b08d58fed9fb7037960e56a89de74098b03588651e5c5232b143573e`.
-- Source commit: `4c94dc2`; contract version `0.2.0-studionet`.
-- Vercel deployment: `dpl_FGSxpUGrrKhjvyWZan136yEEDKEX`.
+- StudioNet contract: `0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6`.
+- Deployment transaction: `0x08ba5e754509bf9bd5d877300bf059aae50abbb88461f1e487349c64d76b3072`.
+- Contract version `0.3.0-studionet`; source is intentionally uncommitted and
+  unpushed until the user explicitly authorizes Git publication.
+- Vercel deployment: `dpl_2mDUH6rHKDNNuATuxzvfLAT4FsRu`.
+- Fly image: `crossbench-api:deployment-01M45665XWTWC0N8JM5034PW9M`;
+  both version-24 `ams` machines are started with passing checks.
 - Fly secret is `CONTRACT_ADDRESS`; frontend variable is
   `NEXT_PUBLIC_CONTRACT_ADDRESS`. Both were cut over on 2026-10-07.
 
 ## Source verification behavior
 
 - Public HTTPS policy and evidence URLs are fetched independently by validators.
+- The wallet-signed claimant binds one intended respondent at creation; only
+  that wallet may accept and counter-stake.
+- Every policy names its issuer and must be unanimously `PRIMARY` before any
+  evidence can move value.
+- On-chain sources carry chain, object type, and object identity fields;
+  validators compare those fields with fetched ledger data and the contract
+  deduplicates the same object across different explorers.
 - Provenance is classified `UNVERIFIED`, `CORROBORATED`, or `PRIMARY`.
 - `UNVERIFIED` evidence remains auditable but contributes zero verdict weight.
 - Canonically equivalent URLs are rejected; same-content duplicates are
@@ -22,16 +32,19 @@
   whole-page equality gates between validators.
 - Consensus tolerates bounded adjacent relevance/provenance judgments, but not
   opposing support or verified-vs-unverified disagreement.
+- Autofill covers every category and supplies complete creation, respondent,
+  and unique per-party challenge bundles. All 20 referenced public sources
+  returned HTTP 200 during the 2026-10-07 verification.
 
 ## Live proof and pending deadline work
 
 Production `ec-1` used real Ethereum Foundation policy/history pages and a
 Blockscout on-chain reference. It reached `PRELIMINARY_VERDICT`; policy quality
-is `PRIMARY`, the unavailable explorer page is `UNVERIFIED`, and duplicate and
-mutation arrays are empty. Backend fresh indexing and the canonical frontend
-both expose it. State is in `docs/PRODUCTION_LIVE_LIFECYCLE_STATE.json`.
+is `PRIMARY`, the structured block reference is `CORROBORATED`, and duplicate
+and mutation arrays are empty. Backend fresh indexing and the canonical
+frontend both expose it. State is in `docs/PRODUCTION_LIVE_LIFECYCLE_STATE.json`.
 
-Its challenge deadline is `2026-10-09T07:34:50Z`. After that, run the resumable
+Its challenge deadline is `2026-10-09T08:13:12Z`. After that, run the resumable
 deadline integration to finalize and withdraw both test credits. Superseded
 contract escrows and their limits are fully inventoried in
 `docs/ESCROW_RECOVERY.md`.
@@ -46,3 +59,7 @@ contract escrows and their limits are fully inventoried in
 - StudioNet writes must be retried only after checking the on-chain
   postcondition.
 - Use `GENVM_VERSION=v0.2.16` for semantic validation in this environment.
+- Current baseline: 33 contract, 10 backend, and 9 frontend tests passing;
+  backend/frontend dependency audits report zero vulnerabilities.
+- StudioNet failed-consensus writes roll back their attempted failure counters;
+  do not rely on stalled-consensus recovery there without a network change.

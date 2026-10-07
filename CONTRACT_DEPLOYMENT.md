@@ -6,16 +6,18 @@
 unverified evidence zero weight, rejects canonical duplicate URLs, detects
 same-content duplicates, records mutations, and compares validator judgments
 with bounded semantic compatibility rather than brittle whole-page hash
-equality. Deployed, verified, and cut over to production on 2026-10-07.
+equality. Version 0.3 additionally binds an intended respondent, verifies a
+declared policy issuer, and uses structured on-chain identities for validation
+and cross-explorer deduplication. Deployed, verified, and cut over on 2026-10-07.
 
 | Field | Value |
 |---|---|
 | Network | GenLayer StudioNet (`61999`) |
-| Contract | `0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6` |
-| Deployment transaction | `0x231b7a38b08d58fed9fb7037960e56a89de74098b03588651e5c5232b143573e` |
-| Deployed by | `0xF526ADbdEB5169e7CeA32c06EF69d7ce4a2D6276` (the documented `crossbench-live-claimant-v1` test identity, funded for this purpose) |
+| Contract | `0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6` |
+| Deployment transaction | `0x08ba5e754509bf9bd5d877300bf059aae50abbb88461f1e487349c64d76b3072` |
+| Deployed by | `0x8D4E752AE688C21eC7C7D4d8a232B5e0700DBf0f` |
 | Runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` |
-| Source commit | `4c94dc2` (`contracts/crossbench_contract.py`) |
+| Source state | Verified working tree; intentionally uncommitted pending user approval |
 
 Deployment reached `MAJORITY_AGREE` in one round (3 agreeing validators,
 2 idle). `get_stats()` confirmed fresh/zero state and balanced accounting.
@@ -23,36 +25,36 @@ A real, stake-backed lifecycle then ran against the deployed address:
 `create_dispute` -> `accept_dispute` -> `submit_evidence` ->
 `trigger_evaluation` -> `PRELIMINARY_VERDICT`. The official Ethereum policy
 was classified `PRIMARY`; the fetched evidence audit retained both content
-fingerprints; the unavailable Blockscout page was safely classified
-`UNVERIFIED` and added zero weight; `duplicate_ids` and `mutated_ids` were
-empty. Durable state is in `docs/PRODUCTION_LIVE_LIFECYCLE_STATE.json`.
+fingerprints; the Ethereum genesis-block API reference and its structured
+`eip155:1/BLOCK/<hash>` identity were classified `CORROBORATED`; `duplicate_ids`
+and `mutated_ids` were empty. Durable state is in
+`docs/PRODUCTION_LIVE_LIFECYCLE_STATE.json`.
 
-Pre-cutover local suites passed: contract direct tests (30/30), pinned GenVM
-semantic validation, backend tests (10/10), frontend tests (7/7), lint,
-typecheck, and webpack build. Post-documentation regression results are
-recorded in the release commit.
+Current local suites pass: contract direct tests (33/33), pinned GenVM semantic
+validation, backend tests (10/10), frontend tests (9/9), lint, typecheck, and
+production build. Both npm audits report zero known vulnerabilities.
 
 The production-visible StudioNet integration was run with real public
 Ethereum sources and real validator consensus. Settlement and withdrawal are
-deadline-gated until `2026-10-09T07:34:50Z`; the resumable test and state file
+deadline-gated until `2026-10-09T08:13:12Z`; the resumable test and state file
 will complete that final phase without duplicating stake-bearing writes.
 
 ## Cutover performed (2026-10-07)
 
-1. `fly secrets set CONTRACT_ADDRESS=0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6 -a crossbench-api`
+1. `fly secrets set CONTRACT_ADDRESS=0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6 -a crossbench-api`
    - rolled out to both machines, health checks passed.
    - `GET /disputes?fresh=1` triggered immediately after to force the
      indexer's documented address-change path (`poll.ts`: on detecting
      `indexer_state.contract_address` no longer matches, it deletes
      `verdicts`, `evidence_items`, `disputes`, and `indexer_state`, then
      reindexes from the new contract). Confirmed: `/disputes` returns the
-     new contract's `ec-1`; `/stats` reports version `0.2.0-studionet`, one
+     new contract's `ec-1`; `/stats` reports version `0.3.0-studionet`, one
      dispute, balanced accounting, and the expected 0.1 GEN escrow.
 2. `vercel env rm NEXT_PUBLIC_CONTRACT_ADDRESS production --yes` +
    `vercel env add NEXT_PUBLIC_CONTRACT_ADDRESS production` (new address) +
    `vercel --prod --yes` to rebuild with the value inlined.
-3. Vercel deployment `dpl_FGSxpUGrrKhjvyWZan136yEEDKEX` was assigned to
-   `crossbench-app.vercel.app`; generated duplicate aliases were removed.
+3. Latest Vercel deployment `dpl_2mDUH6rHKDNNuATuxzvfLAT4FsRu` was assigned
+   to `crossbench-app.vercel.app` after the complete autofill update.
 4. The canonical `/disputes` page renders `ec-1`, and the deployed
    `/disputes/new` JavaScript bundle contains the exact new contract address.
 
@@ -125,8 +127,9 @@ vercel --prod --yes
 vercel alias set <new-deployment-host> crossbench-app.vercel.app
 ```
 
-Remove the automatically generated Crossbench project alias after assigning the
-canonical hostname.
+Assign the canonical hostname after deployment. Vercel-managed deployment and
+project hostnames may remain reachable, but they are not application origins:
+production SIWE/CORS and published links use `crossbench-app.vercel.app`.
 
 ## Post-cutover proof
 
@@ -141,6 +144,10 @@ canonical hostname.
    owner wallets.
 
 Record durable state in `docs/` so the deadline phase can resume idempotently.
+
+StudioNet currently reverts writes whose outer consensus fails, including a
+counter update attempted before raising. Verify network failure semantics
+before relying on `resolve_stalled_dispute`; see `docs/ESCROW_RECOVERY.md`.
 
 ## Rollback
 

@@ -49,7 +49,7 @@ export function DisputeActions(props: Props) {
 
   function fillChallengeExample() {
     const example = DISPUTE_EXAMPLES.find((e) => e.category === props.claimCategory) ?? DISPUTE_EXAMPLES[0];
-    setChallengeItems(isRespondent ? example.respondentItems : example.claimantItems);
+    setChallengeItems(isRespondent ? example.respondentChallengeItems : example.claimantChallengeItems);
   }
 
   const isParty = isClaimant || isRespondent;
@@ -105,9 +105,9 @@ export function DisputeActions(props: Props) {
         </div>
       )}
 
-      {props.canAccept && responseOpen && !isClaimant && (
+      {props.canAccept && responseOpen && isRespondent && (
         <div className="glass-card p-5">
-          <p className="mb-3 font-semibold text-text-ec">Accept this dispute as respondent</p>
+          <p className="mb-3 font-semibold text-text-ec">Accept your assigned dispute</p>
           <p className="mb-4 text-sm text-text-dim">Counter-staking exactly {Number(props.stakeWei) / 1e18} GEN opens the evidence window.</p>
           <button
             disabled={busy || completedActions.has("accept_dispute")}

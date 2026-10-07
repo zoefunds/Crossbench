@@ -1,15 +1,15 @@
 import sys
 import json
 from datetime import datetime, timedelta, timezone
-from conftest import CONTRACT, STAKE, bundle, mock_assessment, mock_pages_ok, addr_hex
+from conftest import CONTRACT, STAKE, bundle, onchain_bundle, mock_assessment, mock_pages_ok, addr_hex
 
 
-def _create(direct_vm, contract, claimant, category="MODERATION_POLICY_VIOLATION"):
+def _create(direct_vm, contract, claimant, respondent, category="MODERATION_POLICY_VIOLATION"):
     direct_vm.sender = claimant
     direct_vm.value = STAKE
     return contract.create_dispute(
         "The platform removed my post citing rule 4.2 but the post never mentioned the restricted topic.",
-        category, "https://platform.example.com/policy#rule-4.2", bundle(1, 2),
+        category, addr_hex(respondent), "https://platform.example.com/policy#rule-4.2", "Example Platform", bundle(1, 2),
     )
 
 
@@ -20,22 +20,22 @@ def _warp(days: int) -> None:
     gl_mod.message_raw["datetime"] = future
 
 
-def test_shortener_and_paste_hosts_rejected_as_evidence(direct_vm, direct_deploy, direct_alice):
+def test_shortener_and_paste_hosts_rejected_as_evidence(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
     direct_vm.sender = direct_alice
     direct_vm.value = STAKE
     bad_bundle = json.dumps([{"kind": "WEB_PAGE", "location": "https://bit.ly/abc123", "description": "shortened link to the policy page"}])
     with direct_vm.expect_revert("link shortener"):
-        contract.create_dispute("x" * 40, "MODERATION_POLICY_VIOLATION", "https://platform.example.com/policy", bad_bundle)
+        contract.create_dispute("x" * 40, "MODERATION_POLICY_VIOLATION", addr_hex(direct_bob), "https://platform.example.com/policy", "Example Platform", bad_bundle)
 
 
-def test_paste_subdomain_also_rejected(direct_vm, direct_deploy, direct_alice):
+def test_paste_subdomain_also_rejected(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
     direct_vm.sender = direct_alice
     direct_vm.value = STAKE
-    bad_bundle = json.dumps([{"kind": "ONCHAIN_REF", "location": "https://mirror.pastebin.com/raw/abc", "description": "mirrored explorer dump"}])
+    bad_bundle = onchain_bundle("https://mirror.pastebin.com/raw/abc", "eip155:1", "TRANSACTION", "0xabc", "mirrored explorer dump")
     with direct_vm.expect_revert("link shortener"):
-        contract.create_dispute("x" * 40, "MODERATION_POLICY_VIOLATION", "https://platform.example.com/policy", bad_bundle)
+        contract.create_dispute("x" * 40, "MODERATION_POLICY_VIOLATION", addr_hex(direct_bob), "https://platform.example.com/policy", "Example Platform", bad_bundle)
 
 
 def test_duplicate_canonical_urls_rejected_within_and_across_bundles(direct_vm, direct_deploy, direct_alice, direct_bob):
@@ -47,9 +47,9 @@ def test_duplicate_canonical_urls_rejected_within_and_across_bundles(direct_vm, 
         {"kind": "WEB_PAGE", "location": "https://example.com/report", "description": "same report under a fragment"},
     ])
     with direct_vm.expect_revert("duplicate evidence source"):
-        contract.create_dispute("x" * 40, "FACTUAL_ACCOUNT_DISPUTE", "https://platform.example.com/policy", duplicate_bundle)
+        contract.create_dispute("x" * 40, "FACTUAL_ACCOUNT_DISPUTE", addr_hex(direct_bob), "https://platform.example.com/policy", "Example Platform", duplicate_bundle)
 
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -62,7 +62,7 @@ def test_duplicate_canonical_urls_rejected_within_and_across_bundles(direct_vm, 
 
 def test_content_duplicates_are_recorded_and_do_not_double_count(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -83,9 +83,36 @@ def test_content_duplicates_are_recorded_and_do_not_double_count(direct_vm, dire
     assert dispute["preliminary_verdict"]["verdict_code"] == "INCONCLUSIVE"
 
 
+def test_onchain_references_require_structured_identity_and_dedupe_across_explorers(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    direct_vm.sender = direct_alice
+    direct_vm.value = STAKE
+    incomplete = json.dumps([{
+        "kind": "ONCHAIN_REF", "location": "https://explorer.example/block/42",
+        "description": "block reference without a structured ledger identity",
+    }])
+    with direct_vm.expect_revert("chain_id"):
+        contract.create_dispute(
+            "x" * 40, "FACTUAL_ACCOUNT_DISPUTE", addr_hex(direct_bob),
+            "https://platform.example.com/policy", "Example Platform", incomplete,
+        )
+
+    claimant_bundle = onchain_bundle("https://explorer-one.example/block/42", "eip155:1", "BLOCK", "42")
+    dispute_id = contract.create_dispute(
+        "x" * 40, "FACTUAL_ACCOUNT_DISPUTE", addr_hex(direct_bob),
+        "https://platform.example.com/policy", "Example Platform", claimant_bundle,
+    )
+    direct_vm.sender = direct_bob
+    direct_vm.value = STAKE
+    contract.accept_dispute(dispute_id)
+    same_ledger_object = onchain_bundle("https://explorer-two.example/blocks/42", "EIP155:1", "BLOCK", "42")
+    with direct_vm.expect_revert("duplicate evidence source"):
+        contract.submit_evidence(dispute_id, same_ledger_object)
+
+
 def test_unverified_policy_and_evidence_cannot_drive_payout(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -135,11 +162,15 @@ def test_validator_comparison_allows_bounded_judgment_variance_but_rejects_confl
     ]}
     assert module._assessments_agree(unverified, unverified_consensus, ["A1"]) is True
     assert module._assessments_agree(base, adjacent, [], require_primary_policy=True) is False
+    non_primary_policy = {"policy": {"source_quality": "UNVERIFIED", "content_hash": "other-policy"}, "items": [
+        {"id": "A1", "supports": "NEITHER", "relevance": "LOW", "source_quality": "UNVERIFIED", "content_hash": "other-content"},
+    ]}
+    assert module._assessments_agree(non_primary_policy, non_primary_policy, [], require_primary_policy=True) is True
 
 
 def test_preliminary_assessment_carries_content_fingerprints(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -162,7 +193,7 @@ def test_preliminary_assessment_carries_content_fingerprints(direct_vm, direct_d
 
 def test_source_integrity_flags_evidence_mutated_after_preliminary_verdict(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -214,6 +245,61 @@ def test_source_integrity_flags_evidence_mutated_after_preliminary_verdict(direc
     assert dispute["final_assessment"][0]["content_hash"] != original_fingerprint
 
 
+def test_compact_complete_authenticated_lifecycle_across_fixed_windows(
+    direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie,
+):
+    """One automated path covers the production state machine end to end.
+
+    Production constants remain 24h/72h/48h; only the direct VM clock advances.
+    """
+    contract = direct_deploy(CONTRACT)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
+
+    direct_vm.sender = direct_charlie
+    direct_vm.value = STAKE
+    with direct_vm.expect_revert("only the intended respondent"):
+        contract.accept_dispute(dispute_id)
+
+    direct_vm.sender = direct_bob
+    direct_vm.value = STAKE
+    contract.accept_dispute(dispute_id)
+    contract.submit_evidence(dispute_id, bundle(9))
+
+    mock_pages_ok(direct_vm)
+    mock_assessment(direct_vm, {
+        "A1": ("CLAIMANT", "HIGH"), "A2": ("NEITHER", "LOW"), "B1": ("RESPONDENT", "HIGH"),
+    })
+    contract.trigger_evaluation(dispute_id)
+    assert contract.get_dispute(dispute_id)["status"] == "PRELIMINARY_VERDICT"
+
+    direct_vm.sender = direct_alice
+    contract.submit_challenge_evidence(dispute_id, bundle(20))
+    direct_vm.clear_mocks()
+    mock_pages_ok(direct_vm)
+    direct_vm.mock_web(r"https://example\.com/20$", {"status": 200, "body": "new challenge evidence"})
+    mock_assessment(direct_vm, {
+        "A1": ("CLAIMANT", "HIGH"), "A2": ("NEITHER", "LOW"), "B1": ("RESPONDENT", "HIGH"),
+        "CA1": ("NEITHER", "LOW"),
+    })
+
+    _warp(days=3)
+    direct_vm.sender = direct_charlie  # finalization is intentionally permissionless
+    contract.finalize_dispute(dispute_id)
+    settled = contract.get_dispute(dispute_id)
+    assert settled["status"] == "SETTLED"
+    assert settled["final_verdict"]["verdict_code"] == "INCONCLUSIVE"
+
+    direct_vm.sender = direct_alice
+    contract.withdraw_credit(addr_hex(direct_alice))
+    direct_vm.sender = direct_bob
+    contract.withdraw_credit(addr_hex(direct_bob))
+    stats = contract.get_stats()
+    assert stats["dispute_escrow_atto"] == "0"
+    assert stats["claimable_atto"] == "0"
+    assert stats["withdrawn_atto"] == str(2 * STAKE)
+    assert stats["accounting_balanced"] is True
+
+
 def test_category_guidance_is_distinct_per_category_and_reaches_trigger_evaluation(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
     contract_module = sys.modules["_contract_crossbench_contract"]
@@ -228,7 +314,7 @@ def test_category_guidance_is_distinct_per_category_and_reaches_trigger_evaluati
     assert all(isinstance(text, str) and len(text) > 20 for text in CATEGORY_GUIDANCE.values())
     assert len({text for text in CATEGORY_GUIDANCE.values()}) == len(CATEGORY_GUIDANCE)
 
-    dispute_id = _create(direct_vm, contract, direct_alice, category="FACTUAL_ACCOUNT_DISPUTE")
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob, category="FACTUAL_ACCOUNT_DISPUTE")
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -245,7 +331,7 @@ def test_category_guidance_is_distinct_per_category_and_reaches_trigger_evaluati
 
 def test_resolve_stalled_dispute_rejected_before_attempts_or_grace_period(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)
@@ -256,7 +342,7 @@ def test_resolve_stalled_dispute_rejected_before_attempts_or_grace_period(direct
 
 def test_resolve_stalled_dispute_refunds_both_parties_after_repeated_failures(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
-    dispute_id = _create(direct_vm, contract, direct_alice)
+    dispute_id = _create(direct_vm, contract, direct_alice, direct_bob)
     direct_vm.sender = direct_bob
     direct_vm.value = STAKE
     contract.accept_dispute(dispute_id)

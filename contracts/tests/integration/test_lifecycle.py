@@ -22,17 +22,18 @@ from gltest import get_contract_factory, create_account
 from gltest.assertions import tx_execution_succeeded, tx_execution_failed
 
 STAKE = 5 * 10 ** 16
-PRODUCTION_CONTRACT = os.environ.get("CROSSBENCH_PRODUCTION_CONTRACT", "0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6")
+PRODUCTION_CONTRACT = os.environ.get("CROSSBENCH_PRODUCTION_CONTRACT", "0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6")
 
 ETHEREUM_BLOCK_POLICY = "https://ethereum.org/en/developers/docs/blocks/"
 ETHEREUM_HISTORY = "https://ethereum.org/en/history/"
 ETHEREUM_GENESIS_REFERENCE = "https://eth.blockscout.com/api/v2/blocks/0"
+ETHEREUM_GENESIS_HASH = "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"
 
 
 def _bundle(*items):
     sources = [
         {"kind": "WEB_PAGE", "location": ETHEREUM_HISTORY, "description": "Ethereum Foundation history page documenting the mainnet launch date and early network history."},
-        {"kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE, "description": "Blockscout's Ethereum mainnet record for genesis block 0, including its immutable block hash, gas fields, and transaction count."},
+        {"kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE, "description": "Blockscout's Ethereum mainnet record for genesis block 0, including its immutable block hash, gas fields, and transaction count.", "chain_id": "eip155:1", "reference_type": "BLOCK", "reference_value": ETHEREUM_GENESIS_HASH},
     ]
     return json.dumps([sources[i - 1] for i in items])
 
@@ -95,7 +96,7 @@ def test_default_judgment_on_response_timeout(claimant, respondent):
 
     tx = contract.create_dispute(args=[
         "Ethereum mainnet began with block 0 on 30 July 2015, rather than on 31 July 2015 as the opposing account states.",
-        "FACTUAL_ACCOUNT_DISPUTE", ETHEREUM_BLOCK_POLICY, _bundle(1, 2),
+        "FACTUAL_ACCOUNT_DISPUTE", respondent.address, ETHEREUM_BLOCK_POLICY, "Ethereum Foundation", _bundle(1, 2),
     ]).transact(value=STAKE)
     assert tx_execution_succeeded(tx)
     dispute_id = _call_retry(lambda: contract.list_disputes(args=[0, 1]).call())["items"][0]["id"]
@@ -123,11 +124,11 @@ def test_full_moderation_appeal_lifecycle_real_consensus(claimant, respondent):
         {"kind": "WEB_PAGE", "location": ETHEREUM_HISTORY, "description": "Ethereum Foundation history page documenting the Frontier mainnet launch on 30 July 2015."},
     ])
     bundle_respondent = json.dumps([
-        {"kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE, "description": "Blockscout's Ethereum mainnet record for genesis block 0, including its immutable block hash, gas fields, and transaction count."},
+        {"kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE, "description": "Blockscout's Ethereum mainnet record for genesis block 0, including its immutable block hash, gas fields, and transaction count.", "chain_id": "eip155:1", "reference_type": "BLOCK", "reference_value": ETHEREUM_GENESIS_HASH},
     ])
 
     tx = contract.create_dispute(args=[
-        claim, "FACTUAL_ACCOUNT_DISPUTE", ETHEREUM_BLOCK_POLICY, bundle_claimant,
+        claim, "FACTUAL_ACCOUNT_DISPUTE", respondent.address, ETHEREUM_BLOCK_POLICY, "Ethereum Foundation", bundle_claimant,
     ]).transact(value=STAKE)
     assert tx_execution_succeeded(tx)
     dispute_id = _call_retry(lambda: contract.list_disputes(args=[0, 1]).call())["items"][0]["id"]
@@ -143,10 +144,12 @@ def test_full_moderation_appeal_lifecycle_real_consensus(claimant, respondent):
     )
 
     assert _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())["can_trigger_evaluation"] is True
-    _write_retry(
-        lambda: contract.trigger_evaluation(args=[dispute_id]).transact(),
-        lambda: _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())["status"] == "PRELIMINARY_VERDICT",
-    )
+    dispute = _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())
+    if dispute["status"] == "EVIDENCE_SUBMISSION":
+        _write_retry(
+            lambda: contract.trigger_evaluation(args=[dispute_id]).transact(),
+            lambda: _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())["status"] == "PRELIMINARY_VERDICT",
+        )
 
     deadline = time.time() + 600
     dispute = _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())
@@ -202,27 +205,41 @@ def test_production_visible_lifecycle_real_consensus(claimant, respondent):
     respondent_bundle = json.dumps([{
         "kind": "ONCHAIN_REF", "location": ETHEREUM_GENESIS_REFERENCE,
         "description": "Blockscout's Ethereum mainnet record for genesis block 0, including its immutable block hash, gas fields, and transaction count.",
+        "chain_id": "eip155:1", "reference_type": "BLOCK", "reference_value": ETHEREUM_GENESIS_HASH,
     }])
     claim = "LIVE CONSENSUS VERIFICATION: Ethereum mainnet began with genesis block 0 on 30 July 2015, not 31 July 2015."
-    _write_retry(
-        lambda: contract.create_dispute(args=[
-            claim, "FACTUAL_ACCOUNT_DISPUTE", ETHEREUM_BLOCK_POLICY, claimant_bundle,
-        ]).transact(value=STAKE),
-        lambda: int(_call_retry(lambda: contract.get_stats(args=[]).call())["total_disputes"]) > before,
-    )
-    dispute_id = _call_retry(lambda: contract.list_disputes(args=[before, 1]).call())["items"][0]["id"]
-    _write_retry(
-        lambda: as_respondent.accept_dispute(args=[dispute_id]).transact(value=STAKE),
-        lambda: _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())["status"] == "EVIDENCE_SUBMISSION",
-    )
-    _write_retry(
-        lambda: as_respondent.submit_evidence(args=[dispute_id, respondent_bundle]).transact(),
-        lambda: _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())["bundle_respondent_submitted"] is True,
-    )
-    _write_retry(
-        lambda: contract.trigger_evaluation(args=[dispute_id]).transact(),
-        lambda: _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())["status"] == "PRELIMINARY_VERDICT",
-    )
+    dispute_id = None
+    if before > 0:
+        candidate_id = _call_retry(lambda: contract.list_disputes(args=[before - 1, 1]).call())["items"][0]["id"]
+        candidate = _call_retry(lambda: contract.get_dispute(args=[candidate_id]).call())
+        if candidate["claim"] == claim and candidate["claimant"].lower() == claimant.address.lower():
+            dispute_id = candidate_id
+    if dispute_id is None:
+        _write_retry(
+            lambda: contract.create_dispute(args=[
+                claim, "FACTUAL_ACCOUNT_DISPUTE", respondent.address, ETHEREUM_BLOCK_POLICY, "Ethereum Foundation", claimant_bundle,
+            ]).transact(value=STAKE),
+            lambda: int(_call_retry(lambda: contract.get_stats(args=[]).call())["total_disputes"]) > before,
+        )
+        dispute_id = _call_retry(lambda: contract.list_disputes(args=[before, 1]).call())["items"][0]["id"]
+    dispute = _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())
+    if dispute["status"] == "CREATED":
+        _write_retry(
+            lambda: as_respondent.accept_dispute(args=[dispute_id]).transact(value=STAKE),
+            lambda: _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())["status"] == "EVIDENCE_SUBMISSION",
+        )
+    dispute = _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())
+    if not dispute["bundle_respondent_submitted"]:
+        _write_retry(
+            lambda: as_respondent.submit_evidence(args=[dispute_id, respondent_bundle]).transact(),
+            lambda: _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())["bundle_respondent_submitted"] is True,
+        )
+    dispute = _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())
+    if dispute["status"] == "EVIDENCE_SUBMISSION":
+        _write_retry(
+            lambda: contract.trigger_evaluation(args=[dispute_id]).transact(),
+            lambda: _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())["status"] == "PRELIMINARY_VERDICT",
+        )
     dispute = _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())
     assert dispute["status"] == "PRELIMINARY_VERDICT"
     assert dispute["policy_assessment"]["source_quality"] in ("CORROBORATED", "PRIMARY")
@@ -269,7 +286,7 @@ def test_adversarial_evidence_content_is_not_authoritative(claimant, respondent)
     ])
 
     tx = contract.create_dispute(args=[
-        claim, "FACTUAL_ACCOUNT_DISPUTE", "https://www.iana.org/help/example-domains", bundle_claimant,
+        claim, "FACTUAL_ACCOUNT_DISPUTE", respondent.address, "https://www.iana.org/help/example-domains", "Internet Assigned Numbers Authority", bundle_claimant,
     ]).transact(value=STAKE)
     assert tx_execution_succeeded(tx)
     dispute_id = contract.list_disputes(args=[0, 1]).call()["items"][0]["id"]
@@ -312,7 +329,7 @@ def test_symmetric_treatment_of_both_bundles(claimant, respondent):
     ])
 
     tx = contract.create_dispute(args=[
-        claim, "CONTENT_LISTING_MISMATCH", "https://www.wipo.int/web/traditional-knowledge/provenance-disclosures", bundle_claimant,
+        claim, "CONTENT_LISTING_MISMATCH", respondent.address, "https://www.wipo.int/web/traditional-knowledge/provenance-disclosures", "World Intellectual Property Organization", bundle_claimant,
     ]).transact(value=STAKE)
     assert tx_execution_succeeded(tx)
     dispute_id = contract.list_disputes(args=[0, 1]).call()["items"][0]["id"]

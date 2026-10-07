@@ -12,6 +12,7 @@ interface DisputeData {
   claim: string;
   claim_category: string;
   policy_reference: string;
+  policy_issuer: string;
   claimant: string;
   respondent: string;
   status: string;
@@ -20,8 +21,8 @@ interface DisputeData {
   evidence_deadline: string;
   challenge_deadline: string;
   winner: string;
-  bundle_claimant: { kind: string; location: string; description: string }[];
-  bundle_respondent: { kind: string; location: string; description: string }[];
+  bundle_claimant: { kind: string; location: string; description: string; chain_id?: string; reference_type?: string; reference_value?: string }[];
+  bundle_respondent: { kind: string; location: string; description: string; chain_id?: string; reference_type?: string; reference_value?: string }[];
   bundle_respondent_submitted: boolean;
   preliminary_verdict: { verdict_code: string; payout_bps: number; claimant_weight: number; respondent_weight: number } | null;
   preliminary_assessment: { id: string; supports: string; relevance: string; source_quality: string; duplicate_of?: string; reason_code: string }[] | null;
@@ -38,7 +39,7 @@ interface DisputeData {
   source_integrity: { mutated_ids: string[]; duplicate_ids?: string[] } | null;
 }
 
-function EvidenceBundleList({ title, items }: { title: string; items: { kind: string; location: string; description: string }[] }) {
+function EvidenceBundleList({ title, items }: { title: string; items: { kind: string; location: string; description: string; chain_id?: string; reference_type?: string; reference_value?: string }[] }) {
   if (items.length === 0) return null;
   return (
     <div>
@@ -48,6 +49,9 @@ function EvidenceBundleList({ title, items }: { title: string; items: { kind: st
           <div key={i} className="glass-card p-3 text-sm">
             <p className="label-sm text-purple">{item.kind.replaceAll("_", " ")}</p>
             <p className="data-mono mt-1 break-all text-cyan">{item.location}</p>
+            {item.kind === "ONCHAIN_REF" && (
+              <p className="data-mono mt-1 text-xs text-purple">{item.chain_id} · {item.reference_type} · {item.reference_value}</p>
+            )}
             <p className="mt-1 text-text-dim">{item.description}</p>
           </div>
         ))}
@@ -102,7 +106,8 @@ export default function DisputeDetailPage({ params }: { params: Promise<{ id: st
       </div>
       <p className="label-sm mb-2 text-purple">{dispute.claim_category.replaceAll("_", " ")}</p>
       <h1 className="font-headline text-2xl font-semibold text-text-ec">{dispute.claim}</h1>
-      <p className="data-mono mt-2 text-sm text-text-dim">Policy reference: {dispute.policy_reference}</p>
+      <p className="data-mono mt-2 text-sm text-text-dim">Policy issuer: {dispute.policy_issuer}</p>
+      <p className="data-mono mt-1 text-sm text-text-dim">Policy reference: {dispute.policy_reference}</p>
       {dispute.policy_assessment && (
         <p className="mt-1 text-xs text-text-dim">Policy source quality: {dispute.policy_assessment.source_quality} · {dispute.policy_assessment.reason_code}</p>
       )}
@@ -123,8 +128,8 @@ export default function DisputeDetailPage({ params }: { params: Promise<{ id: st
           <p className="data-mono mt-1 truncate text-text-ec">{dispute.claimant}</p>
         </div>
         <div className="glass-card p-4">
-          <p className="label-sm text-text-dim">Respondent</p>
-          <p className="data-mono mt-1 truncate text-text-ec">{dispute.respondent || "not yet accepted"}</p>
+          <p className="label-sm text-text-dim">Intended respondent</p>
+          <p className="data-mono mt-1 truncate text-text-ec">{dispute.respondent}</p>
         </div>
       </div>
 

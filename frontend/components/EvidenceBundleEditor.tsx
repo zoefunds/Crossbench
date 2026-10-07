@@ -4,6 +4,9 @@ export interface EvidenceItem {
   kind: "WEB_PAGE" | "ONCHAIN_REF";
   location: string;
   description: string;
+  chain_id?: string;
+  reference_type?: "BLOCK" | "TRANSACTION" | "CONTRACT" | "ACCOUNT";
+  reference_value?: string;
 }
 
 const BLOCKED_SOURCE_HOSTS = new Set([
@@ -64,12 +67,21 @@ export function canonicalEvidenceUrl(value: string): string | null {
 
 export function hasDuplicateEvidenceLocations(items: EvidenceItem[]): boolean {
   const locations = items.map((item) => canonicalEvidenceUrl(item.location));
-  return locations.some((location, index) => location !== null && locations.indexOf(location) !== index);
+  const ledgerRefs = items.map((item) => item.kind === "ONCHAIN_REF"
+    ? `${item.chain_id?.trim().toLowerCase()}:${item.reference_type}:${item.reference_value?.trim().toLowerCase()}`
+    : null);
+  return locations.some((location, index) => location !== null && locations.indexOf(location) !== index) ||
+    ledgerRefs.some((reference, index) => reference !== null && ledgerRefs.indexOf(reference) !== index);
 }
 
 export function isValidEvidenceItem(item: EvidenceItem): boolean {
   const descriptionLength = item.description.trim().length;
-  return isValidPublicSourceUrl(item.location) && descriptionLength >= 8 && descriptionLength <= 600;
+  const ledgerIdentityValid = item.kind === "WEB_PAGE" || (
+    !!item.chain_id?.trim().match(/^[A-Za-z0-9._:/-]{1,64}$/) &&
+    !!item.reference_type &&
+    !!item.reference_value?.trim().match(/^[A-Za-z0-9._:/-]{2,200}$/)
+  );
+  return isValidPublicSourceUrl(item.location) && descriptionLength >= 8 && descriptionLength <= 600 && ledgerIdentityValid;
 }
 
 export function EvidenceBundleEditor({
@@ -101,7 +113,9 @@ export function EvidenceBundleEditor({
           <div className="flex items-center justify-between">
             <select
               value={item.kind}
-              onChange={(e) => update(i, { kind: e.target.value as EvidenceItem["kind"] })}
+              onChange={(e) => update(i, e.target.value === "ONCHAIN_REF"
+                ? { kind: "ONCHAIN_REF", chain_id: "eip155:1", reference_type: "TRANSACTION", reference_value: "" }
+                : { kind: "WEB_PAGE", chain_id: undefined, reference_type: undefined, reference_value: undefined })}
               className="label-sm rounded border border-border-ec bg-navy-elevated px-2 py-1 text-text-ec"
             >
               <option value="WEB_PAGE">Web page</option>
@@ -121,6 +135,34 @@ export function EvidenceBundleEditor({
           {item.location.length > 0 && !item.location.startsWith("https://") && (
             <p className="text-xs text-error">Every validator must be able to fetch this source independently, so a public HTTPS URL is required.</p>
           )}
+          {item.kind === "ONCHAIN_REF" && (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <input
+                value={item.chain_id ?? ""}
+                onChange={(e) => update(i, { chain_id: e.target.value })}
+                placeholder="Chain ID, e.g. eip155:1"
+                maxLength={64}
+                className="data-mono rounded border border-border-ec bg-navy-elevated px-3 py-2 text-sm text-text-ec"
+              />
+              <select
+                value={item.reference_type ?? "TRANSACTION"}
+                onChange={(e) => update(i, { reference_type: e.target.value as EvidenceItem["reference_type"] })}
+                className="rounded border border-border-ec bg-navy-elevated px-3 py-2 text-sm text-text-ec"
+              >
+                <option value="BLOCK">Block</option>
+                <option value="TRANSACTION">Transaction</option>
+                <option value="CONTRACT">Contract</option>
+                <option value="ACCOUNT">Account</option>
+              </select>
+              <input
+                value={item.reference_value ?? ""}
+                onChange={(e) => update(i, { reference_value: e.target.value })}
+                placeholder="Hash, height, or address"
+                maxLength={200}
+                className="data-mono rounded border border-border-ec bg-navy-elevated px-3 py-2 text-sm text-text-ec"
+              />
+            </div>
+          )}
           <textarea
             value={item.description}
             onChange={(e) => update(i, { description: e.target.value })}
@@ -132,7 +174,7 @@ export function EvidenceBundleEditor({
         </div>
       ))}
       {hasDuplicateEvidenceLocations(items) && (
-        <p className="text-xs text-error">Duplicate source URLs are not allowed, including aliases that differ only by host case, fragment, default HTTPS port, or trailing slash.</p>
+        <p className="text-xs text-error">Duplicate source URLs or identical on-chain objects are not allowed, even when different explorers are used.</p>
       )}
       {items.length < max && (
         <button

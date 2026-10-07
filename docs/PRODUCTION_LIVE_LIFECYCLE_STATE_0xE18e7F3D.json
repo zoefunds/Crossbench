@@ -1,0 +1,23 @@
+{
+    "record_type": "historical_validation_lifecycle",
+    "current_production": false,
+    "network": "studionet",
+  "contract_address": "0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6",
+  "deployment_transaction": "0x231b7a38b08d58fed9fb7037960e56a89de74098b03588651e5c5232b143573e",
+  "dispute_id": "ec-1",
+  "claimant": "0xF526ADbdEB5169e7CeA32c06EF69d7ce4a2D6276",
+  "respondent": "0x94D2637d397f7277b4d9d21796bbAFe08F9De416",
+  "challenge_deadline": 1791531290,
+  "challenge_deadline_utc": "2026-10-09T07:34:50Z",
+  "preliminary_verdict": "INCONCLUSIVE",
+  "policy_source_quality": "PRIMARY",
+  "evidence_source_qualities": {
+    "A1": "PRIMARY",
+    "B1": "UNVERIFIED"
+  },
+  "source_integrity": {
+    "duplicate_ids": [],
+    "mutated_ids": []
+  },
+  "completed_through": "PRELIMINARY_VERDICT"
+}

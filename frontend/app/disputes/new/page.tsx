@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { parseEther } from "viem";
+import { isAddress, parseEther } from "viem";
 import { useAccount } from "wagmi";
 import { useGenLayerClient, CONTRACT_ADDRESS, isContractConfigured } from "@/lib/genlayer";
 import { runWrite, type TxProgress } from "@/lib/tx";
 import { EvidenceBundleEditor, hasDuplicateEvidenceLocations, isValidEvidenceItem, isValidPublicSourceUrl, type EvidenceItem } from "@/components/EvidenceBundleEditor";
 import { TxStatus } from "@/components/TxStatus";
-import { DISPUTE_EXAMPLES } from "@/lib/exampleData";
+import { demoRespondentFor, DISPUTE_EXAMPLES, isValidIntendedRespondent } from "@/lib/exampleData";
 
 const CATEGORIES = [
   { value: "MODERATION_POLICY_VIOLATION", label: "Moderation - policy violation" },
@@ -19,12 +19,14 @@ const CATEGORIES = [
 
 export default function NewDisputePage() {
   const router = useRouter();
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const client = useGenLayerClient();
 
   const [claim, setClaim] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0].value);
+  const [respondent, setRespondent] = useState("");
   const [policyRef, setPolicyRef] = useState("");
+  const [policyIssuer, setPolicyIssuer] = useState("");
   const [stake, setStake] = useState("0.05");
   const [items, setItems] = useState<EvidenceItem[]>([{ kind: "WEB_PAGE", location: "", description: "" }]);
   const [progress, setProgress] = useState<TxProgress | null>(null);
@@ -38,16 +40,20 @@ export default function NewDisputePage() {
     setExampleIndex((i) => i + 1);
     setCategory(example.category);
     setClaim(example.claim);
+    setRespondent(demoRespondentFor(address));
     setPolicyRef(example.policyReference);
+    setPolicyIssuer(example.policyIssuer);
     setItems(example.claimantItems);
   }
 
   const claimValid = claim.trim().length >= 40 && claim.trim().length <= 1800;
+  const respondentValid = isAddress(respondent.trim()) && isValidIntendedRespondent(respondent, address);
   const policyRefValid = isValidPublicSourceUrl(policyRef.trim());
+  const policyIssuerValid = policyIssuer.trim().length >= 2 && policyIssuer.trim().length <= 160;
   const itemsValid = items.length >= 1 && items.every(isValidEvidenceItem) && !hasDuplicateEvidenceLocations(items);
   const stakeNumber = Number(stake);
   const stakeValid = Number.isFinite(stakeNumber) && stakeNumber >= 0.001 && stakeNumber <= 10;
-  const canSubmit = claimValid && policyRefValid && itemsValid && stakeValid && isConnected && !!client && isContractConfigured;
+  const canSubmit = claimValid && respondentValid && policyRefValid && policyIssuerValid && itemsValid && stakeValid && isConnected && !!client && isContractConfigured;
 
   async function handleSubmit() {
     if (!client || !canSubmit) return;
@@ -59,7 +65,7 @@ export default function NewDisputePage() {
         {
           address: CONTRACT_ADDRESS,
           functionName: "create_dispute",
-          args: [claim.trim(), category, policyRef.trim(), JSON.stringify(items)],
+          args: [claim.trim(), category, respondent.trim(), policyRef.trim(), policyIssuer.trim(), JSON.stringify(items)],
           value: parseEther(stake),
         },
         setProgress,
@@ -136,6 +142,17 @@ export default function NewDisputePage() {
         </div>
 
         <div>
+          <label className="label-sm mb-2 block text-text-dim">Intended respondent wallet</label>
+          <input
+            value={respondent}
+            onChange={(e) => setRespondent(e.target.value)}
+            placeholder="0x..."
+            className="data-mono w-full rounded border border-border-ec bg-navy-elevated px-3 py-2 text-sm text-text-ec placeholder:text-text-dim/60"
+          />
+          {!respondentValid && respondent.length > 0 && <p className="mt-1 text-xs text-error">Enter a valid wallet other than the connected claimant; it will be the only wallet authorized to counter-stake and respond.</p>}
+        </div>
+
+        <div>
           <label className="label-sm mb-2 block text-text-dim">Policy / agreement reference</label>
           <input
             value={policyRef}
@@ -145,6 +162,18 @@ export default function NewDisputePage() {
             className="data-mono w-full rounded border border-border-ec bg-navy-elevated px-3 py-2 text-sm text-text-ec placeholder:text-text-dim/60"
           />
           {!policyRefValid && policyRef.length > 0 && <p className="mt-1 text-xs text-error">Use a direct, public HTTPS URL to the authoritative policy or agreement.</p>}
+        </div>
+
+        <div>
+          <label className="label-sm mb-2 block text-text-dim">Policy issuer</label>
+          <input
+            value={policyIssuer}
+            onChange={(e) => setPolicyIssuer(e.target.value)}
+            placeholder="e.g. Ethereum Foundation or Example Marketplace"
+            maxLength={160}
+            className="w-full rounded border border-border-ec bg-navy-elevated px-3 py-2 text-text-ec placeholder:text-text-dim/60"
+          />
+          {!policyIssuerValid && policyIssuer.length > 0 && <p className="mt-1 text-xs text-error">Name the organization that officially issued this policy or agreement.</p>}
         </div>
 
         <div>

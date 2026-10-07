@@ -4,7 +4,7 @@
 
 - Only frontend URL: `https://crossbench-app.vercel.app/`.
 - Backend: `https://crossbench-api.fly.dev/`.
-- Current contract: `0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6`.
+- Current contract: `0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6`.
 - Backend contract access remains read-only with no signer/private key.
 - PostgreSQL contract rows are a cache; chain state is authoritative.
 - Backend and frontend contract addresses must always match.
@@ -51,14 +51,14 @@ or stale linked-account data.
 1. Run tests, typecheck, ESLint, webpack build, and audit.
 2. Deploy with `vercel --prod --yes` from `frontend/`.
 3. Point `crossbench-app.vercel.app` at the returned deployment.
-4. Remove all other Crossbench project/generated aliases.
-5. Verify canonical root and a live dispute detail return HTTP 200.
-6. Verify removed aliases return 404.
-7. Confirm the frontend bundle uses the current API and contract address.
+4. Verify canonical root and a live dispute detail return HTTP 200.
+5. Confirm the frontend bundle uses the current API and contract address.
+6. Confirm SIWE/CORS remains restricted to the canonical origin. Vercel-managed
+   deployment hostnames may exist but are not supported application origins.
 
 Rollback by reassigning `crossbench-app.vercel.app` to the recorded prior
-deployment, then remove any alias created by the failed rollout. Do not expose a
-second public URL.
+deployment. Keep published links and authentication configuration on the
+canonical hostname.
 
 ## Contract cutover
 

@@ -1,5 +1,7 @@
 {
-  "network": "studionet",
+    "record_type": "historical_production_lifecycle",
+    "current_production": false,
+    "network": "studionet",
   "contract_address": "0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A",
   "dispute_id": "ec-3",
   "claimant": "0xF526ADbdEB5169e7CeA32c06EF69d7ce4a2D6276",

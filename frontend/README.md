@@ -38,19 +38,24 @@ components/DeadlineCountdown.tsx          one-second deadlines
 components/EvidenceBundleEditor.tsx       contract-aligned URL/text validation
 lib/api.ts                                read-through calls + forced refresh
 lib/auth.ts                               SIWE and access-token refresh
-lib/exampleData.ts                        valid fictional demonstrations
+lib/exampleData.ts                        contract-complete lifecycle demonstrations
 lib/genlayer.ts                           wallet-backed GenLayer client
 lib/operations.ts                         non-blocking telemetry
 lib/tx.ts                                 finalized-only write flow
 ```
 
-Autofill public pages provide context but do not prove fictional events; an
-`INCONCLUSIVE` result is valid.
+Autofill cycles through all four claim categories. It supplies a valid intended
+respondent different from the connected claimant, a first-party policy URL and
+matching issuer, and a contract-valid claimant bundle. Respondent and challenge
+forms select distinct evidence for the category, avoiding cross-party URL and
+ledger-object duplication. The factual example includes `chain_id`, object
+type, and the full Ethereum genesis-block hash. Public pages provide context
+but do not prove fictional events, so an `INCONCLUSIVE` result remains valid.
 
 ## Environment
 
 ```dotenv
-NEXT_PUBLIC_CONTRACT_ADDRESS=0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6
+NEXT_PUBLIC_CONTRACT_ADDRESS=0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6
 NEXT_PUBLIC_API_URL=http://localhost:8080
 NEXT_PUBLIC_GENLAYER_CHAIN_ID=61999
 NEXT_PUBLIC_GENLAYER_RPC_URL=https://studio.genlayer.com/api
@@ -85,8 +90,9 @@ vercel alias rm <generated-project-alias> --yes
 curl -fsS -o /dev/null -w '%{http_code}\n' https://crossbench-app.vercel.app/
 ```
 
-Verify the canonical root and a live dispute page. Any other Crossbench alias is
-a configuration error and must be removed.
+Verify the canonical root and a live dispute page. Vercel-managed deployment
+hostnames may exist, but only the canonical origin is used for published links,
+SIWE, and backend CORS.
 
 The “Lex Cryptographica” Tailwind 4 theme lives in `app/globals.css`. Reown's
 third-party modal only approximates it. Preserve explicit grid column classes;

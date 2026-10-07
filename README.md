@@ -13,16 +13,17 @@ accept, evaluate, settle, or withdraw a dispute.
 | Frontend | <https://crossbench-app.vercel.app/> (the only supported frontend URL) |
 | Read-only API | <https://crossbench-api.fly.dev/> |
 | Network | GenLayer StudioNet, chain ID `61999` |
-| Intelligent Contract | `0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6` |
-| Deployment transaction | `0x231b7a38b08d58fed9fb7037960e56a89de74098b03588651e5c5232b143573e` |
+| Intelligent Contract | `0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6` |
+| Deployment transaction | `0x08ba5e754509bf9bd5d877300bf059aae50abbb88461f1e487349c64d76b3072` |
 | Contract runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` |
 
 The production contract contains one explicitly labelled real-source test
 dispute from the 2026-10-07 cutover. `ec-1` reached `PRELIMINARY_VERDICT`
-through real validator consensus. Its official policy source was classified
-`PRIMARY`; an unavailable explorer reference was retained as `UNVERIFIED`
-and contributed zero verdict weight; duplicate and mutation sets were empty.
-The genuine challenge window closes at `2026-10-09T07:34:50Z`.
+through real validator consensus. The claimant and intended respondent were
+wallet-bound, the Ethereum Foundation policy was classified `PRIMARY`, and the
+respondent's structured Ethereum genesis-block reference was classified
+`CORROBORATED`. Duplicate and mutation sets were empty. The genuine challenge
+window closes at `2026-10-09T08:13:12Z`.
 
 ## Repository
 
@@ -38,21 +39,24 @@ Authoritative documentation:
 - `ARCHITECTURE.md` — components, trust boundaries, data flow, and security.
 - `docs/CONTRACT_SPEC.md` — exact contract methods, limits, lifecycle, and settlement.
 - `CONTRACT_DEPLOYMENT.md` — deploy, cut over, verify, and recover a contract address.
-- `docs/AUDIT_2026-10-05.md` — findings, tests, and real-network evidence.
+- `docs/AUDIT_2026-10-05.md` — historical audit link with current disposition.
+- `docs/VERIFICATION_EVIDENCE.md` — current control-to-test and live evidence map.
 - `docs/ROLLBACK_CUTOVER.md` — backend/frontend/contract cutover and rollback.
 - `MEMORY.md` — concise current operational state for the next maintainer.
 
 ## Protocol lifecycle
 
-1. The claimant calls `create_dispute` with 0.001–10 GEN and an immutable
-   evidence bundle (one to three items).
-2. A different wallet calls `accept_dispute` before the 24-hour response
-   deadline and counter-stakes exactly the same amount.
+1. The claimant calls `create_dispute` with 0.001–10 GEN, an explicit intended
+   respondent wallet, a declared policy issuer, and an immutable evidence
+   bundle (one to three items).
+2. Only that intended respondent wallet may call `accept_dispute` before the
+   24-hour response deadline and counter-stake exactly the same amount.
 3. The respondent pins one to three evidence items before the 72-hour evidence
    deadline. The claimant's original bundle was already pinned at creation.
 4. Anyone calls `trigger_evaluation` when both bundles are ready (or after the
    evidence deadline). Every validator independently fetches the policy and
-   every public HTTPS source, verifies provenance, and assesses support and
+   every public HTTPS source, verifies the declared policy issuer and any
+   structured on-chain object identity, and assesses support and
    relevance. Unverified or duplicate material cannot add verdict weight.
 5. The preliminary verdict opens a 48-hour challenge window. Each party may add
    up to two immutable evidence items once.
@@ -118,6 +122,11 @@ gltest contracts/tests/integration/test_lifecycle.py \
 
 The deadline-resume test is idempotent and reads the durable files in `docs/`.
 It skips safely until the recorded challenge deadline has passed.
+
+The current automated baseline is 33 contract tests, 10 backend tests, and 9
+frontend tests. Autofill covers every category, a non-self respondent,
+issuer-aligned policy sources, structured on-chain data, and unique
+original/challenge evidence across a complete example lifecycle.
 
 ## Runtime configuration
 

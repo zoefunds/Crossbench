@@ -47,10 +47,17 @@ exact mechanics):
   whole-page byte equality across dynamic renders.
 - **Provenance verification**: validators grade the policy and each item as
   primary, corroborated, or unverified using stricter rules for official policy
-  and on-chain system-of-record data. Unverified items have zero weight, and a
-  moderation claim without a primary policy source is inconclusive.
+  and on-chain system-of-record data. Every policy names its issuer and must be
+  unanimously primary before evidence can move value. On-chain items carry a
+  structured chain/object identity that validators match against fetched ledger
+  data. Unverified items have zero weight.
 - **Duplicate resistance**: canonical URL aliases are rejected on submission;
-  different URLs with identical fetched content are recorded and counted once.
+  the same structured ledger object is rejected even across different
+  explorers; different URLs with identical fetched content are recorded and
+  counted once.
+- **Authenticated counterparties**: the claimant is the wallet-signed creator,
+  the intended respondent is bound at creation, and only that exact wallet can
+  accept and counter-stake.
 - **Tolerance without ambiguity**: independent validators may differ by one
   adjacent relevance/provenance grade or between one-sided support and
   uncertainty, but direct party conflicts and material provenance conflicts
@@ -59,11 +66,11 @@ exact mechanics):
   consensus run, every originally-judged item's fingerprint is compared
   against the one recorded at the preliminary verdict; any drift is recorded
   in `source_integrity.mutated_ids` as a permanent, visible audit trail.
-- **Stalled-consensus recovery**: a consensus call that raises is caught,
-  counted, and surfaced as a retryable `[CONSENSUS_FAILED]` error rather than
-  corrupting state. After repeated failures and a grace period,
-  `resolve_stalled_dispute` refunds both stakes instead of leaving them in
-  escrow indefinitely.
+- **Stalled-consensus recovery design**: the source records failure counters
+  and exposes `resolve_stalled_dispute` after a threshold and grace period.
+  Direct VM tests cover this state machine. StudioNet currently rolls back the
+  counter update with the failed outer consensus transaction, so this path is
+  unavailable there until failure-state persistence is supported.
 
 ## Backend
 
@@ -108,8 +115,11 @@ read.
 
 Response, evidence, and challenge deadlines render to the second on list,
 detail, and profile surfaces. Local expiry disables actions; contract time is
-authoritative. Autofill examples are structurally valid fictional scenarios and
-may correctly produce an inconclusive result.
+authoritative. Autofill covers all four categories and supplies a different
+respondent, first-party policy and issuer, contract-valid original evidence,
+and distinct challenge evidence. The factual example includes a structured
+Ethereum genesis-block reference. Fictional allegations may correctly produce
+an inconclusive result.
 
 ## PostgreSQL model
 
@@ -145,11 +155,13 @@ and cannot influence protocol state.
 - Literal internal/private IP targets and URL credentials are rejected. DNS
   rebinding protection depends on GenLayer's fetch sandbox checking resolved
   addresses; application code cannot control validator infrastructure DNS.
-- Exact relevance agreement protects payout integrity but can reduce liveness.
-  Three independent real-consensus integration runs against the current
-  contract (`contracts/tests/integration/test_lifecycle.py -m slow`) completed
-  in 201 seconds combined on 2026-10-06; that is evidence of a successful
-  path, not a universal liveness guarantee.
+- Validator agreement rejects material conflicts while tolerating adjacent
+  relevance/provenance judgments and harmless dynamic-page render differences.
+  Recorded real-consensus integration runs demonstrate successful fetch and
+  assessment paths for their sources, not a universal liveness guarantee.
+- Failed outer consensus writes roll back their failure-counter increments on
+  StudioNet. Historical affected test escrows are inventoried in
+  `docs/ESCROW_RECOVERY.md`.
 - StudioNet is a test network and GEN here is testnet value.
 
 ## Ownership
