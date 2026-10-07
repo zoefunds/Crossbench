@@ -121,6 +121,11 @@ def test_validator_comparison_allows_bounded_judgment_variance_but_rejects_confl
     assert module._assessments_agree(base, adjacent) is True
     assert module._assessments_agree(base, conflicting) is False
 
+    dynamic_render = {"policy": {"source_quality": "PRIMARY", "content_hash": "different-policy-render"}, "items": [
+        {"id": "A1", "supports": "CLAIMANT", "relevance": "MEDIUM", "source_quality": "CORROBORATED", "content_hash": "different-dynamic-render"},
+    ]}
+    assert module._assessments_agree(base, dynamic_render) is True
+
     unverified = {"policy": {"source_quality": "CORROBORATED", "content_hash": "policy"}, "items": [
         {"id": "A1", "supports": "NEITHER", "relevance": "MEDIUM", "source_quality": "UNVERIFIED", "content_hash": "content"},
     ]}

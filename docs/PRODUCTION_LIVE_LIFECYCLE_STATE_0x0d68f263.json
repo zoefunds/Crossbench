@@ -7,5 +7,6 @@
   "challenge_deadline": 1791472380,
   "challenge_deadline_utc": "2026-10-08T15:13:00Z",
   "preliminary_verdict": "INCONCLUSIVE",
-  "completed_through": "PRELIMINARY_VERDICT"
+  "completed_through": "PRELIMINARY_VERDICT",
+  "note": "Historical production lifecycle retained for settlement on the superseded contract."
 }

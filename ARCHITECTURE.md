@@ -41,11 +41,10 @@ exact mechanics):
 - **Category-aware adjudication**: `claim_category` selects a distinct rubric
   injected into the consensus prompt, so the category changes how evidence is
   weighed rather than being a cosmetic label.
-- **Source-authenticity consensus**: each validator's independent fetch is
-  content-hash fingerprinted, and that fingerprint is now part of what
-  validators must agree on - a source that renders differently between two
-  independent fetches fails consensus outright instead of being silently
-  trusted.
+- **Independent source verification**: each validator fetches and judges every
+  source itself. Content fingerprints remain audit/mutation metadata, while
+  consensus compares bounded evidentiary judgments instead of brittle
+  whole-page byte equality across dynamic renders.
 - **Provenance verification**: validators grade the policy and each item as
   primary, corroborated, or unverified using stricter rules for official policy
   and on-chain system-of-record data. Unverified items have zero weight, and a

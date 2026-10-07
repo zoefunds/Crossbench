@@ -241,19 +241,14 @@ def _ordinally_compatible(left: str, right: str, ranks: dict) -> bool:
 def _assessments_agree(own: dict, proposed: dict, strict_quality_ids: list = None, require_primary_policy: bool = False) -> bool:
     # Validators reject materially conflicting judgments without requiring
     # brittle byte-for-byte categorical agreement from independent LLM calls.
-    # content_hash must also match: it is each validator's own independent
-    # fetch of the evidence source, fingerprinted. Requiring agreement here
-    # is the source-authenticity control - if a source's content differs
-    # between independent fetches (edited mid-flight, host-side A/B content,
-    # a since-repointed redirect), validators fail to reach consensus
-    # instead of silently judging on whatever each of them happened to see.
+    # Whole-page content_hash is deliberately not compared: dynamic counters,
+    # timestamps, localization, and CDN variants make byte equality brittle.
+    # It remains leader-recorded audit data and supports later mutation flags.
     # reason_code is intentionally excluded from consensus - it is
     # informational context from the leader, never decision-critical, and
     # LLM phrasing is not expected to be reproducible.
     own_items, proposed_items = own["items"], proposed["items"]
     if len(own_items) != len(proposed_items):
-        return False
-    if own["policy"].get("content_hash") != proposed["policy"].get("content_hash"):
         return False
     if require_primary_policy and (own["policy"]["source_quality"] != "PRIMARY" or proposed["policy"]["source_quality"] != "PRIMARY"):
         return False
@@ -270,8 +265,6 @@ def _assessments_agree(own: dict, proposed: dict, strict_quality_ids: list = Non
         if not _ordinally_compatible(own_item["source_quality"], proposed_item["source_quality"], SOURCE_QUALITY_RANK):
             return False
         if own_item["id"] in strict_quality and "UNVERIFIED" in (own_item["source_quality"], proposed_item["source_quality"]):
-            return False
-        if own_item.get("content_hash") != proposed_item.get("content_hash"):
             return False
         if own_item.get("duplicate_of", "") != proposed_item.get("duplicate_of", ""):
             return False

@@ -242,8 +242,11 @@ Important aggregation and consensus rules:
 - `_assessments_agree` uses bounded semantic compatibility rather than exact
   categorical equality: adjacent relevance/provenance grades and
   `NEITHER`-versus-one-side uncertainty are accepted, while opposing party
-  support, `PRIMARY`-versus-`UNVERIFIED`, different content fingerprints, or a
-  different duplicate mapping are rejected. On-chain references additionally
+  support, `PRIMARY`-versus-`UNVERIFIED`, or a different duplicate mapping are
+  rejected. Whole-page hashes are deliberately not compared during validator
+  acceptance because timestamps, counters, localization, and CDN variants make
+  byte equality brittle; hashes remain audit and mutation-detection metadata.
+  On-chain references additionally
   require every validator to reject `UNVERIFIED`, while moderation policy
   references require every validator to classify the policy as `PRIMARY`.
   Free-text `reason_code` remains
@@ -268,13 +271,12 @@ Important aggregation and consensus rules:
   submission boundary. Different URLs returning identical fetched content are
   recorded in `source_integrity.duplicate_ids`, linked by `duplicate_of`, and
   excluded from aggregate weight after the first occurrence.
-- **Source-authenticity consensus**: each validator's independent fetch is
-  fingerprinted (`_fingerprint`, SHA-256 truncated to 16 hex chars) and the
-  fingerprint is now part of what `_assessments_agree` requires to match.
-  If one validator's fetch of a source differs from another's (edited
-  mid-flight, inconsistent CDN/geo content, a since-repointed redirect),
-  consensus fails outright instead of silently settling on whichever
-  content one validator happened to see.
+- **Independent source verification**: every validator fetches and judges each
+  source itself. The leader records a SHA-256 fingerprint (truncated to 16 hex
+  chars) for audit and later mutation detection, but validators do not require
+  whole-page byte equality because harmless dynamic page elements would make
+  that comparison brittle. Material disagreement is handled through support,
+  provenance, relevance, availability, and duplicate-mapping checks.
 - **Mutable-evidence detection**: when challenge evidence triggers a second
   consensus run at `finalize_dispute`, every originally-judged item's new
   fingerprint is compared against the one recorded at the preliminary

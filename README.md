@@ -73,8 +73,10 @@ Authoritative documentation:
   GenLayer web-fetch sandbox.
 - Validators compare judgments with bounded compatibility: adjacent relevance
   and provenance grades are tolerated, but opposing support, materially
-  conflicting provenance, fetched-content drift, and inconsistent duplicate
-  mappings fail consensus. `reason_code` is explanatory context only.
+  conflicting provenance and inconsistent duplicate mappings fail consensus.
+  Whole-page hashes remain audit/mutation signals but are not exact-match
+  consensus fields because authoritative pages often contain dynamic text.
+  `reason_code` is explanatory context only.
 - The UI reports success only after `FINALIZED` and a successful leader receipt;
   `ACCEPTED` is informational.
 
