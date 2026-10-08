@@ -48,6 +48,11 @@ deadline integration to finalize and withdraw both test credits. Superseded
 contract escrows and their limits are fully inventoried in
 `docs/ESCROW_RECOVERY.md`.
 
+On 2026-10-08, historical contract `0x0d68...` disputes `ec-1` and `ec-3`
+were finalized after their real deadlines and both deterministic-wallet credits
+were withdrawn. Its post-recovery state is zero escrow, zero claimable credit,
+0.25 GEN total withdrawn, and balanced accounting.
+
 ## Operational constraints
 
 - The backend is read-only and has no signer/private key.

@@ -71,12 +71,18 @@ immutable) but are no longer indexed or displayed.
 | Network | GenLayer StudioNet (`61999`) |
 | Contract | `0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A` |
 | Deployment transaction | `0x994141b9b4131b0b1abc1cc38870256bd9acdc87f0a4ef37cdf4460f0e56450d` |
-| Source | Previous production (`ec-1` and `ec-3` await deadline settlement) |
+| Source | Previous production (`ec-1` and `ec-3` finalized and withdrawn on 2026-10-08) |
 
 Contracts are immutable and each deployment starts with empty dispute/accounting
 state. The complete inventory of outstanding test stakes—including the two
 intermediate validation deployments—is in `docs/ESCROW_RECOVERY.md`. None is
 referenced by a running service.
+
+The previous production contract now reports both recoverable disputes settled,
+zero escrow, zero claimable credit, `0.25 GEN` withdrawn in total (including its
+earlier cancellation refund), and balanced accounting. Recovery used the
+idempotent deadline integration and deterministic test identities; no payable
+setup transaction was repeated.
 
 ## Pre-deployment gates
 

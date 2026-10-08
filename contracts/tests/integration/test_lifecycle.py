@@ -356,7 +356,14 @@ def test_symmetric_treatment_of_both_bundles(claimant, respondent):
 
 
 @pytest.mark.deadline
-@pytest.mark.parametrize("state_filename", ["LIVE_LIFECYCLE_STATE.json", "PRODUCTION_LIVE_LIFECYCLE_STATE.json"])
+@pytest.mark.parametrize("state_filename", [
+    "LIVE_LIFECYCLE_STATE.json",
+    "PRODUCTION_LIVE_LIFECYCLE_STATE.json",
+    "PRODUCTION_LIVE_LIFECYCLE_STATE_0x0d68f263_ec1.json",
+    "PRODUCTION_LIVE_LIFECYCLE_STATE_0x0d68f263.json",
+    "PRODUCTION_LIVE_LIFECYCLE_STATE_0xE18e7F3D.json",
+    "FORMER_PRODUCTION_LIVE_LIFECYCLE_STATE.json",
+])
 def test_resume_recorded_live_lifecycle_after_challenge_expiry(claimant, respondent, state_filename):
     """Resume the durable exact-contract StudioNet run after its real 48-hour
     deadline, settle it, and withdraw the claimant's inconclusive refund.
