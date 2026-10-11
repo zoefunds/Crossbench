@@ -19,5 +19,16 @@
     "duplicate_ids": [],
     "mutated_ids": []
   },
-  "completed_through": "PRELIMINARY_VERDICT"
+  "status": "SETTLED",
+  "settled_at": "2026-10-11T15:39:50Z",
+  "completed_through": "SETTLED_AND_CREDITS_WITHDRAWN",
+  "recovery_evidence": {
+    "claimant_credit_atto": "0",
+    "respondent_credit_atto": "0",
+    "contract_escrow_atto": "0",
+    "contract_claimable_atto": "0",
+    "contract_withdrawn_atto": "100000000000000000",
+    "accounting_balanced": true,
+    "runner_result": "deadline recovery integration: 6 passed"
+  }
 }

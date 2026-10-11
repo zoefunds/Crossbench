@@ -23,10 +23,12 @@ failed-consensus attempt did not persist its counter, so StudioNet's outer-
 failure rollback remains an explicitly disclosed network limitation. The
 previous production lifecycle remains
 immutable at its old address and is inventoried in `docs/ESCROW_RECOVERY.md`.
-The current labelled smoke dispute `ec-1` holds 0.1 matched test GEN and reached
-`PRELIMINARY_VERDICT` after a safe retry. Its policy is `PRIMARY`, its structured
-genesis-block reference is `CORROBORATED`, its preliminary result is
-`INCONCLUSIVE`, and its challenge deadline is `2026-10-09T09:21:10Z`.
+The labelled smoke dispute `ec-1` reached `PRELIMINARY_VERDICT` after a safe
+retry, then finalized after its fixed challenge window on 2026-10-11. Its
+policy is `PRIMARY`, its structured genesis-block reference is `CORROBORATED`,
+and its result is `INCONCLUSIVE`. Both deterministic test-wallet refunds have
+been withdrawn; production now reports zero escrow, zero claimable credit, and
+balanced accounting.
 
 ## Repository
 

@@ -35,7 +35,7 @@
   and unique per-party challenge bundles. All 20 referenced public sources
   returned HTTP 200 during the 2026-10-07 verification.
 
-## Live proof and pending deadline work
+## Live proof and completed deadline recovery
 
 Production `ec-1` used real Ethereum Foundation policy/history pages and a
 Blockscout on-chain reference. It reached `PRELIMINARY_VERDICT`; policy quality
@@ -43,15 +43,23 @@ is `PRIMARY`, the structured block reference is `CORROBORATED`, and duplicate
 and mutation arrays are empty. Backend fresh indexing and the canonical
 frontend both expose it. State is in `docs/PRODUCTION_LIVE_LIFECYCLE_STATE.json`.
 
-Its challenge deadline is `2026-10-09T09:21:10Z`. After that, run the resumable
-deadline integration to finalize and withdraw both test credits. Superseded
-contract escrows and their limits are fully inventoried in
-`docs/ESCROW_RECOVERY.md`.
+After its challenge deadline, the resumable integration finalized it at
+`2026-10-11T15:38:28Z` and withdrew both test credits. Current production now
+has zero escrow, zero claimable credit, 1.1 GEN total withdrawn (including the
+earlier cancelled test), and balanced accounting. Superseded contract escrows
+and their disposition are fully inventoried in `docs/ESCROW_RECOVERY.md`.
 
 On 2026-10-08, historical contract `0x0d68...` disputes `ec-1` and `ec-3`
 were finalized after their real deadlines and both deterministic-wallet credits
 were withdrawn. Its post-recovery state is zero escrow, zero claimable credit,
 0.25 GEN total withdrawn, and balanced accounting.
+
+On 2026-10-11, historical `0xE18e.../ec-1` and former-production
+`0x5904.../ec-1` were also finalized and both deterministic-wallet credits
+withdrawn. A pre-write audit read all seven inventory records and both wallet
+credits; the recovery suite then reported `6 passed`. The 21 GEN still visible
+at `0x5904...` belongs to separate demo disputes and identities, not the
+documented deterministic integration lifecycle.
 
 ## Operational constraints
 

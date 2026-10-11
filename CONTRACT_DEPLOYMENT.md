@@ -24,7 +24,8 @@ agreeing. The initial `get_stats()` read confirmed version `0.3.1-studionet`,
 fresh/zero state, and balanced accounting. Production now contains labelled
 smoke dispute `ec-1`, which completed:
 `create_dispute` -> `accept_dispute` -> `submit_evidence` ->
-`trigger_evaluation` -> `PRELIMINARY_VERDICT`. The official Ethereum policy
+`trigger_evaluation` -> `PRELIMINARY_VERDICT` -> `finalize_dispute` ->
+`SETTLED` -> both credit withdrawals. The official Ethereum policy
 was classified `PRIMARY`; the fetched evidence audit retained both content
 fingerprints; the Ethereum genesis-block API reference and its structured
 `eip155:1/BLOCK/<hash>` identity were classified `CORROBORATED`; `duplicate_ids`
@@ -36,10 +37,12 @@ validation, backend tests (10/10), frontend tests (9/9), lint, typecheck, and
 production build. Both npm audits report zero known vulnerabilities.
 
 The current StudioNet integration used real public Ethereum sources, wallet-
-signed writes, 0.1 matched test GEN, and real validator consensus. Its
-preliminary result is `INCONCLUSIVE`; settlement is deadline-gated until
-`2026-10-09T09:21:10Z`. The resumable test and state file can complete the
-deadline phase without duplicating stake-bearing writes.
+signed writes, 0.1 matched test GEN, and real validator consensus. Its result
+is `INCONCLUSIVE`. The resumable test finalized it at
+`2026-10-11T15:38:28Z` after the real deadline and withdrew both refunds
+without duplicating stake-bearing writes. Final reads show zero escrow, zero
+claimable credit, 1.1 GEN total withdrawn including the earlier cancelled test,
+and balanced accounting.
 
 ## Cutover performed (2026-10-07)
 
@@ -74,7 +77,7 @@ immutable) but are no longer indexed or displayed.
 | Source | Previous production (`ec-1` and `ec-3` finalized and withdrawn on 2026-10-08) |
 
 Contracts are immutable and each deployment starts with empty dispute/accounting
-state. The complete inventory of outstanding test stakes—including the two
+state. The complete inventory of historical test stakes—including the two
 intermediate validation deployments—is in `docs/ESCROW_RECOVERY.md`. None is
 referenced by a running service.
 
@@ -83,6 +86,15 @@ zero escrow, zero claimable credit, `0.25 GEN` withdrawn in total (including its
 earlier cancellation refund), and balanced accounting. Recovery used the
 idempotent deadline integration and deterministic test identities; no payable
 setup transaction was repeated.
+
+On 2026-10-11, the same recovery path settled and withdrew the documented
+deterministic-wallet lifecycle on `0xE18e...`, former production
+`0x5904...`, and current production `0x2352...`. The required pre-write audit
+read every inventory dispute and both wallet credits, the recovery run reported
+`6 passed`, and a post-write audit confirmed all three records settled with
+zero deterministic-wallet credits and balanced accounting. The separate 21 GEN
+remaining on `0x5904...` belongs to two other demo disputes and identities and
+was not touched.
 
 ## Pre-deployment gates
 

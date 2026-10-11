@@ -356,6 +356,44 @@ def test_symmetric_treatment_of_both_bundles(claimant, respondent):
 
 
 @pytest.mark.deadline
+def test_audit_recorded_recovery_inventory_before_writes(claimant):
+    """Read every documented recovery dispute and both deterministic wallet
+    credits without broadcasting a transaction. Run this immediately before
+    the resumable recovery test so the recovery starts from a complete,
+    current on-chain snapshot rather than stale state files."""
+    inventory = [
+        ("0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A", "ec-1"),
+        ("0x0d68f263f9A3c060F1b91430071B37F515A0Bb4A", "ec-3"),
+        ("0xc7D4fEAA1DF3394298978bA05754e9Aa515822E2", "ec-1"),
+        ("0xAd57B8E1A364bdbAf18acCf0149c0fB290ef8Ad1", "ec-1"),
+        ("0xE18e7F3D63B54dFb71D5AFD6c3269Fd9510577F6", "ec-1"),
+        ("0x5904faF3215cC2B0664adf5Fa0a8f0C000e5BAF6", "ec-1"),
+        ("0x2352A0cBF175F1e69eBc8364A35301570378FF22", "ec-1"),
+    ]
+    wallets = (
+        "0xF526ADbdEB5169e7CeA32c06EF69d7ce4a2D6276",
+        "0x94D2637d397f7277b4d9d21796bbAFe08F9De416",
+    )
+    factory = get_contract_factory("Crossbench")
+    for contract_address, dispute_id in inventory:
+        contract = factory.build_contract(contract_address=contract_address, account=claimant)
+        dispute = _call_retry(lambda: contract.get_dispute(args=[dispute_id]).call())
+        assert dispute["id"] == dispute_id
+        credits = {}
+        for wallet in wallets:
+            credits[wallet] = int(_call_retry(lambda: contract.get_credit(args=[wallet]).call()))
+            assert credits[wallet] >= 0
+        print(json.dumps({
+            "contract_address": contract_address,
+            "dispute_id": dispute_id,
+            "status": dispute["status"],
+            "settled_at": dispute["settled_at"],
+            "credits": credits,
+            "stats": _call_retry(lambda: contract.get_stats(args=[]).call()),
+        }, sort_keys=True))
+
+
+@pytest.mark.deadline
 @pytest.mark.parametrize("state_filename", [
     "LIVE_LIFECYCLE_STATE.json",
     "PRODUCTION_LIVE_LIFECYCLE_STATE.json",

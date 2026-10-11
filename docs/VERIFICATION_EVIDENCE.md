@@ -1,6 +1,6 @@
 # Verification evidence
 
-Last verified: 2026-10-07. Production version: `0.3.1-studionet`.
+Last verified: 2026-10-11. Production version: `0.3.1-studionet`.
 
 ## Control-to-test map
 
@@ -36,15 +36,16 @@ build completed successfully.
 
 - Contract: `0x2352A0cBF175F1e69eBc8364A35301570378FF22`.
 - Deployment consensus: one round, all five validators agreeing.
-- Current lifecycle: production `ec-1`, `PRELIMINARY_VERDICT`, real 0.1 GEN
-  matched escrow, preliminary result `INCONCLUSIVE`, challenge deadline
-  `2026-10-09T09:21:10Z`.
+- Current lifecycle: production `ec-1`, `SETTLED` at
+  `2026-10-11T15:38:28Z` after an `INCONCLUSIVE` preliminary result and the
+  fixed challenge window.
 - Policy: Ethereum Foundation, `PRIMARY`.
 - Ledger object: Ethereum mainnet genesis block, `eip155:1`, type `BLOCK`,
   full hash recorded in the lifecycle JSON, quality `CORROBORATED`.
 - Integrity: no duplicate or mutation flags.
-- API: both machines healthy, fresh stats version `0.3.1-studionet`, one
-  dispute, 0.1 GEN deposits/escrow, accounting balanced.
+- On-chain recovery: claimant and respondent credits are both zero; contract
+  escrow and claimable credit are zero; 1.1 GEN total withdrawn including the
+  earlier cancelled test; accounting balanced.
 - Frontend: canonical alias serves deployment
   `dpl_3iHiVaxMdhxQwmdgCYJs69PbpQn6`; its bundles contain the current contract
   address and not the former address.
@@ -62,3 +63,9 @@ remains accounting-balanced; a later retry reached `PRELIMINARY_VERDICT`, but
 the stalled-consensus threshold is not yet network-reliable. Former deployments
 and their immutable test stakes remain
 inventoried in `ESCROW_RECOVERY.md`.
+
+The 2026-10-11 recovery began with a read-only audit of every documented
+dispute and both deterministic wallet credits. The resumable deadline test then
+reported `6 passed`, and a second full audit confirmed the three newly mature
+records are `SETTLED` with zero integration-wallet credits. No payable setup
+transaction was repeated.

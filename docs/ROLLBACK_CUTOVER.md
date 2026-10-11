@@ -73,6 +73,14 @@ Contract rollback restores both configurations and rebuilds/reindexes. Because
 contract state cannot be copied by changing an address, rollback is a routing
 operation—not a state rollback. Explicitly account for stakes on both deployments.
 
+Current recovery record (verified 2026-10-11): production `ec-1` is `SETTLED`,
+both deterministic test-wallet credits are zero, contract escrow and claimable
+credit are zero, total withdrawn is 1.1 GEN, and accounting is balanced. The
+resumable recovery completed all six recorded lifecycle files without replaying
+any payable setup transaction. Historical deterministic-wallet records are
+tracked in `ESCROW_RECOVERY.md`; the two stalled intermediate deployments remain
+immutable and unrecoverable under current StudioNet failure-state semantics.
+
 ## Incident thresholds
 
 - Stop new writes if frontend/backend addresses diverge.

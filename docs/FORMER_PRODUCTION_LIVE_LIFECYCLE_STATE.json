@@ -24,12 +24,23 @@
         "mutated_ids": []
     },
     "accounting_snapshot": {
-        "captured_at": "2026-10-07T08:25:19.840Z",
-        "total_deposited_atto": "100000000000000000",
-        "dispute_escrow_atto": "100000000000000000",
+        "captured_at": "2026-10-11T15:42:00Z",
+        "total_deposited_atto": "21100000000000000000",
+        "dispute_escrow_atto": "21000000000000000000",
         "claimable_atto": "0",
-        "withdrawn_atto": "0",
+        "withdrawn_atto": "100000000000000000",
         "accounting_balanced": true
     },
-    "completed_through": "PRELIMINARY_VERDICT"
+    "status": "SETTLED",
+    "settled_at": "2026-10-11T15:40:31Z",
+    "completed_through": "SETTLED_AND_CREDITS_WITHDRAWN",
+    "recovery_evidence": {
+        "claimant_credit_atto": "0",
+        "respondent_credit_atto": "0",
+        "dispute_escrow_atto": "0",
+        "contract_claimable_atto": "0",
+        "accounting_balanced": true,
+        "runner_result": "deadline recovery integration: 6 passed",
+        "note": "The contract-level 21 GEN residual belongs to separate ec-2/ec-3 demo identities and is outside this deterministic integration-wallet recovery record."
+    }
 }
